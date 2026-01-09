@@ -45,6 +45,11 @@ export async function collectForTopic(
       rawResponse = result.content;
       inputTokens = result.inputTokens;
       outputTokens = result.outputTokens;
+    } else if (model.provider === 'google') {
+      const result = await callGoogle(prompt, model.model_name, env.GOOGLE_API_KEY);
+      rawResponse = result.content;
+      inputTokens = result.inputTokens;
+      outputTokens = result.outputTokens;
     } else {
       throw new Error(`Unknown provider: ${model.provider}`);
     }
@@ -140,5 +145,37 @@ async function callAnthropic(prompt: string, model: string, apiKey: string): Pro
     content: data.content[0]?.text ?? '',
     inputTokens: data.usage?.input_tokens ?? null,
     outputTokens: data.usage?.output_tokens ?? null,
+  };
+}
+
+async function callGoogle(prompt: string, model: string, apiKey: string): Promise<LLMResponse> {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: 1024 },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Google API error: ${response.status} ${text}`);
+  }
+
+  const data = (await response.json()) as {
+    candidates?: Array<{ content: { parts: Array<{ text: string }> } }>;
+    usageMetadata?: { promptTokenCount: number; candidatesTokenCount: number };
+  };
+
+  return {
+    content: data.candidates?.[0]?.content?.parts?.[0]?.text ?? '',
+    inputTokens: data.usageMetadata?.promptTokenCount ?? null,
+    outputTokens: data.usageMetadata?.candidatesTokenCount ?? null,
   };
 }
