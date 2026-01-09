@@ -1,0 +1,6 @@
+# LLM API Keys
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Admin authentication
+ADMIN_API_KEY=your-local-admin-key

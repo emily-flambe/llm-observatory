@@ -1,0 +1,45 @@
+{
+  "name": "llm-observatory",
+  "version": "1.0.0",
+  "description": "Track and compare what different LLMs say about various topics",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build:frontend && wrangler dev",
+    "deploy": "npm run build:frontend && wrangler deploy",
+    "build:frontend": "vite build",
+    "db:init": "wrangler d1 execute llm-observatory-db --local --file=./src/db/schema.sql",
+    "db:init:remote": "wrangler d1 execute llm-observatory-db --remote --file=./src/db/schema.sql",
+    "db:seed": "wrangler d1 execute llm-observatory-db --local --file=./scripts/seed.sql",
+    "db:seed:remote": "wrangler d1 execute llm-observatory-db --remote --file=./scripts/seed.sql",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "lint": "eslint .",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.11.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.10.0",
+    "@cloudflare/workers-types": "^4.20251221.0",
+    "@playwright/test": "^1.49.0",
+    "@tailwindcss/vite": "^4.1.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.1.0",
+    "@eslint/js": "^9.39.0",
+    "eslint": "^9.39.0",
+    "eslint-plugin-react-hooks": "^7.0.0",
+    "eslint-plugin-react-refresh": "^0.4.26",
+    "typescript-eslint": "^8.50.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0",
+    "vitest": "~3.2.0",
+    "wrangler": "^4.58.0"
+  }
+}
