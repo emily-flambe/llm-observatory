@@ -50,6 +50,11 @@ export async function collectForTopic(
       rawResponse = result.content;
       inputTokens = result.inputTokens;
       outputTokens = result.outputTokens;
+    } else if (model.provider === 'cloudflare') {
+      const result = await callCloudflare(prompt, model.model_name, env.AI);
+      rawResponse = result.content;
+      inputTokens = result.inputTokens;
+      outputTokens = result.outputTokens;
     } else {
       throw new Error(`Unknown provider: ${model.provider}`);
     }
@@ -177,5 +182,27 @@ async function callGoogle(prompt: string, model: string, apiKey: string): Promis
     content: data.candidates?.[0]?.content?.parts?.[0]?.text ?? '',
     inputTokens: data.usageMetadata?.promptTokenCount ?? null,
     outputTokens: data.usageMetadata?.candidatesTokenCount ?? null,
+  };
+}
+
+async function callCloudflare(prompt: string, model: string, ai: Ai): Promise<LLMResponse> {
+  const response = (await ai.run(model as Parameters<Ai['run']>[0], {
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 1024,
+  })) as { response?: string } | string;
+
+  const content =
+    typeof response === 'string'
+      ? response
+      : response?.response ?? '';
+
+  if (!content) {
+    throw new Error('Cloudflare AI returned empty response');
+  }
+
+  return {
+    content,
+    inputTokens: null, // Cloudflare AI doesn't return token counts
+    outputTokens: null,
   };
 }

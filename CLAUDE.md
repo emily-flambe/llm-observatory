@@ -77,8 +77,11 @@ frontend/
 Currently supported:
 - OpenAI (GPT-4o)
 - Anthropic (Claude Sonnet)
+- Google (Gemini 2.0 Flash)
+- Cloudflare Workers AI (Llama 3.1 8B)
 
 Provider adapters are in `src/services/llm/`. Each implements the `LLMProvider` interface.
+The `collector.ts` also has inline implementations for the collection endpoint.
 
 ## Admin API
 

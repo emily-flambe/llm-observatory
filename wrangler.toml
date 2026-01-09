@@ -1,8 +1,11 @@
 name = "llm-observatory"
 account_id = "facf6619808dc039df729531bbb26d1d"
 main = "src/index.ts"
-compatibility_date = "2025-01-01"
+compatibility_date = "2025-01-09"
 compatibility_flags = ["nodejs_compat"]
+
+[ai]
+binding = "AI"
 workers_dev = true
 preview_urls = true
 
@@ -27,4 +30,5 @@ head_sampling_rate = 1
 # Secrets (set via wrangler secret put):
 # OPENAI_API_KEY
 # ANTHROPIC_API_KEY
+# GOOGLE_API_KEY
 # ADMIN_API_KEY

@@ -33,11 +33,19 @@ Before running the project, you need to obtain API credentials. Here's your todo
   - Create account → API Keys → Create Key
   - Pricing: Pay-as-you-go, ~$3/1M input tokens for Claude Sonnet
 
-### Future Providers (Phase 3)
 - [ ] **Google AI (Gemini)** — [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
   - Sign in with Google → Get API key
   - Free tier available, then pay-as-you-go
+  - Using `gemini-2.0-flash` model
 
+### Built-in (No API Key Required)
+- **Cloudflare Workers AI** — Included with Cloudflare Workers
+  - No separate API key needed, uses the AI binding
+  - Currently using `@cf/meta/llama-3.1-8b-instruct-fast` (Llama 3.1 8B)
+  - Free tier: 10,000 neurons/day, then $0.011 per 1,000 neurons
+  - [Workers AI Models Catalog](https://developers.cloudflare.com/workers-ai/models/)
+
+### Future Providers
 - [ ] **xAI (Grok)** — [console.x.ai](https://console.x.ai/)
   - Create account → API Keys
   - Requires X Premium+ subscription or API access
@@ -57,7 +65,7 @@ Before running the project, you need to obtain API credentials. Here's your todo
 
 ### Infrastructure
 - [ ] **Cloudflare Account** — [dash.cloudflare.com](https://dash.cloudflare.com/)
-  - Free tier includes Workers, D1, and R2
+  - Free tier includes Workers, D1, Workers AI, and R2
   - Needed for deployment
 
 ---
@@ -118,6 +126,7 @@ Before running the project, you need to obtain API credentials. Here's your todo
    ```bash
    npx wrangler secret put OPENAI_API_KEY
    npx wrangler secret put ANTHROPIC_API_KEY
+   npx wrangler secret put GOOGLE_API_KEY
    npx wrangler secret put ADMIN_API_KEY
    ```
 
