@@ -5,3 +5,7 @@ GOOGLE_API_KEY=...
 
 # Admin authentication (any secret string you choose)
 ADMIN_API_KEY=your-local-admin-key
+
+# BigQuery (get from GCP service account)
+BQ_SERVICE_ACCOUNT_EMAIL=your-sa@project.iam.gserviceaccount.com
+BQ_PRIVATE_KEY=base64-encoded-private-key-pem
