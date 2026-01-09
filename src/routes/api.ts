@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import type { Env } from '../types/env';
-import { getTopics, getTopic, getResponsesForTopic, getModels } from '../services/storage';
+import { getTopics, getTopic, getModels } from '../services/storage';
 import { collectForTopic } from '../services/collector';
+import { queryResponses } from '../services/bigquery';
 
 const api = new Hono<{ Bindings: Env }>();
 
@@ -24,14 +25,18 @@ api.get('/topics/:id', async (c) => {
   return c.json({ topic });
 });
 
-// Get responses for a topic
+// Get responses for a topic (from BigQuery)
 api.get('/topics/:id/responses', async (c) => {
   const { id } = c.req.param();
   const limitParam = c.req.query('limit');
   const limit = limitParam ? parseInt(limitParam, 10) : 50;
 
-  const responses = await getResponsesForTopic(c.env.DB, id, limit);
-  return c.json({ responses });
+  const result = await queryResponses(c.env, id, { limit });
+  if (!result.success) {
+    return c.json({ error: result.error }, 500);
+  }
+
+  return c.json({ responses: result.data.rows, totalRows: result.data.totalRows });
 });
 
 // List all models

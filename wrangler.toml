@@ -27,8 +27,15 @@ port = 8787
 enabled = true
 head_sampling_rate = 1
 
+[vars]
+BQ_PROJECT_ID = "emilys-personal-projects"
+BQ_DATASET_ID = "llm_observatory"
+BQ_TABLE_ID = "raw_responses"
+
 # Secrets (set via wrangler secret put):
 # OPENAI_API_KEY
 # ANTHROPIC_API_KEY
 # GOOGLE_API_KEY
 # ADMIN_API_KEY
+# BQ_SERVICE_ACCOUNT_EMAIL
+# BQ_PRIVATE_KEY

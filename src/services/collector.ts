@@ -1,5 +1,6 @@
 import type { Env } from '../types/env';
-import { getTopic, getModel, saveResponse } from './storage';
+import { getTopic, getModel } from './storage';
+import { insertRow, extractProductFamily, type BigQueryRow } from './bigquery';
 
 export interface CollectionResult {
   success: boolean;
@@ -64,18 +65,34 @@ export async function collectForTopic(
 
   const latencyMs = Date.now() - startTime;
 
-  await saveResponse(env.DB, {
+  // Push to BigQuery (primary data store for responses)
+  const bqRow: BigQueryRow = {
     id: responseId,
-    topic_id: topicId,
-    model_id: modelId,
-    prompt,
-    raw_response: rawResponse,
     collected_at: collectedAt,
+    company: model.provider,
+    product: extractProductFamily(model.model_name),
+    model: model.model_name,
+    topic_id: topicId,
+    topic_name: topic.name,
+    topic_category: topic.category,
+    prompt,
+    response: rawResponse || null,
     latency_ms: latencyMs,
-    input_tokens: inputTokens,
-    output_tokens: outputTokens,
+    input_tokens: inputTokens ?? 0,
+    output_tokens: outputTokens ?? 0,
     error,
-  });
+    success: !error,
+  };
+
+  const bqResult = await insertRow(env, bqRow);
+  if (!bqResult.success) {
+    console.error('BigQuery insert failed:', bqResult.error);
+    // Still return success if LLM call succeeded - BQ failure is logged but not blocking
+    if (error) {
+      return { success: false, responseId, error };
+    }
+    return { success: true, responseId, latencyMs, error: `Warning: BigQuery insert failed: ${bqResult.error}` };
+  }
 
   if (error) {
     return { success: false, responseId, error };

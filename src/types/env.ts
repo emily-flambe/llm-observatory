@@ -4,9 +4,16 @@ export interface Env {
   ASSETS: Fetcher;
   AI: Ai;
 
-  // Secrets
+  // LLM Provider Secrets
   OPENAI_API_KEY: string;
   ANTHROPIC_API_KEY: string;
   GOOGLE_API_KEY: string;
   ADMIN_API_KEY: string;
+
+  // BigQuery Config
+  BQ_PROJECT_ID: string;
+  BQ_DATASET_ID: string;
+  BQ_TABLE_ID: string;
+  BQ_SERVICE_ACCOUNT_EMAIL: string;
+  BQ_PRIVATE_KEY: string;
 }
