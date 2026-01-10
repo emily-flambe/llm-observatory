@@ -9,7 +9,14 @@ import {
 import { collectForTopic } from '../services/collector';
 import { createLLMProvider } from '../services/llm';
 import { getModel } from '../services/storage';
-import { queryResponses, getTopicsFromBigQuery } from '../services/bigquery';
+import {
+  queryResponses,
+  getTopicsFromBigQuery,
+  getRecentPrompts,
+  insertRow,
+  extractProductFamily,
+  type BigQueryRow,
+} from '../services/bigquery';
 import { requireAccess } from '../middleware/access';
 import { checkRateLimit, incrementRateLimit, getRateLimitStatus } from '../services/ratelimit';
 
@@ -88,6 +95,22 @@ api.get('/topics/:id/responses', async (c) => {
   }
 
   return c.json({ responses: result.data.rows, totalRows: result.data.totalRows });
+});
+
+// ==================== Prompt Lab History ====================
+
+// Get recent prompts from Prompt Lab
+api.get('/prompts', async (c) => {
+  const limitParam = c.req.query('limit');
+  const search = c.req.query('search');
+  const limit = limitParam ? parseInt(limitParam, 10) : 50;
+
+  const result = await getRecentPrompts(c.env, { limit, search: search || undefined });
+  if (!result.success) {
+    return c.json({ error: result.error }, 500);
+  }
+
+  return c.json({ prompts: result.data });
 });
 
 // ==================== Prompt Templates ====================
@@ -308,6 +331,7 @@ admin.post('/prompt', async (c) => {
     );
   }
 
+  const collectedAt = new Date().toISOString();
   const results: Array<{
     modelId: string;
     model: string;
@@ -329,11 +353,21 @@ admin.post('/prompt', async (c) => {
       continue;
     }
 
+    const responseId = crypto.randomUUID();
+    let responseContent: string | null = null;
+    let errorMsg: string | null = null;
+    let latencyMs = 0;
+    let inputTokens = 0;
+    let outputTokens = 0;
+
     try {
       const provider = createLLMProvider(model.id, model.provider, model.model_name, c.env);
       const start = Date.now();
       const response = await provider.complete({ prompt: body.prompt });
-      const latencyMs = Date.now() - start;
+      latencyMs = Date.now() - start;
+      responseContent = response.content;
+      inputTokens = response.inputTokens ?? 0;
+      outputTokens = response.outputTokens ?? 0;
 
       results.push({
         modelId,
@@ -343,13 +377,38 @@ admin.post('/prompt', async (c) => {
         success: true,
       });
     } catch (err) {
+      errorMsg = err instanceof Error ? err.message : 'Unknown error';
       results.push({
         modelId,
         model: model.display_name,
-        error: err instanceof Error ? err.message : 'Unknown error',
+        error: errorMsg,
         success: false,
       });
     }
+
+    // Save to BigQuery (fire and forget - don't block on this)
+    const bqRow: BigQueryRow = {
+      id: responseId,
+      collected_at: collectedAt,
+      source: 'prompt-lab',
+      company: model.provider,
+      product: extractProductFamily(model.model_name),
+      model: model.model_name,
+      topic_id: null,
+      topic_name: null,
+      prompt_template_id: null,
+      prompt_template_name: null,
+      prompt: body.prompt,
+      response: responseContent,
+      latency_ms: latencyMs,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      error: errorMsg,
+      success: !errorMsg,
+    };
+    insertRow(c.env, bqRow).catch((err) => {
+      console.error('Failed to save prompt-lab response to BigQuery:', err);
+    });
   }
 
   // Increment rate limit by number of models queried

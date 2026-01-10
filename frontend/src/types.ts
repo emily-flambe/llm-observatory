@@ -72,3 +72,24 @@ export interface CollectionBatchResponse {
   failed: number;
   results: CollectionResult[];
 }
+
+// Prompt Lab history types
+export interface PromptLabResponse {
+  model: string;
+  company: string;
+  response: string | null;
+  latency_ms: number;
+  error: string | null;
+  success: boolean;
+}
+
+export interface PromptLabQuery {
+  id: string;
+  collected_at: string;
+  prompt: string;
+  responses: PromptLabResponse[];
+}
+
+export interface PromptsResponse {
+  prompts: PromptLabQuery[];
+}

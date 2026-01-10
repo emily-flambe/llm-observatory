@@ -15,14 +15,15 @@ export interface BigQueryEnv {
 export interface BigQueryRow {
   id: string;
   collected_at: string; // ISO timestamp
+  source: 'collect' | 'prompt-lab'; // where the response came from
   company: string; // provider like "openai", "anthropic"
   product: string; // family like "gpt", "claude"
   model: string; // specific model like "gpt-4o"
-  topic_id: string;
-  topic_name: string;
-  prompt_template_id: string;
-  prompt_template_name: string;
-  prompt: string; // rendered prompt
+  topic_id: string | null; // null for prompt-lab
+  topic_name: string | null; // null for prompt-lab
+  prompt_template_id: string | null; // null for prompt-lab
+  prompt_template_name: string | null; // null for prompt-lab
+  prompt: string; // rendered prompt or freeform prompt
   response: string | null;
   latency_ms: number;
   input_tokens: number;
@@ -257,6 +258,7 @@ export async function insertRow(
             json: {
               id: row.id,
               collected_at: row.collected_at,
+              source: row.source,
               company: row.company,
               product: row.product,
               model: row.model,
@@ -465,7 +467,7 @@ export async function getTopicsFromBigQuery(
       topic_name,
       COUNT(*) as response_count
     FROM \`${env.BQ_PROJECT_ID}.${env.BQ_DATASET_ID}.${env.BQ_TABLE_ID}\`
-    WHERE success = TRUE
+    WHERE success = TRUE AND topic_id IS NOT NULL
     GROUP BY topic_id, topic_name
     ORDER BY topic_name
   `;
@@ -576,6 +578,157 @@ export async function getTopicIdsWithResponses(
     const topicIds = (result.rows ?? []).map((row) => row.f[0].v ?? '').filter(Boolean);
 
     return { success: true, data: topicIds };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return { success: false, error: `BigQuery query failed: ${message}` };
+  }
+}
+
+/**
+ * Prompt Lab query result
+ */
+export interface PromptLabQuery {
+  id: string;
+  collected_at: string;
+  prompt: string;
+  responses: Array<{
+    model: string;
+    company: string;
+    response: string | null;
+    latency_ms: number;
+    error: string | null;
+    success: boolean;
+  }>;
+}
+
+/**
+ * Get recent prompts from Prompt Lab
+ */
+export async function getRecentPrompts(
+  env: BigQueryEnv,
+  options: { limit?: number; search?: string } = {}
+): Promise<BigQueryResult<PromptLabQuery[]>> {
+  const tokenResult = await getAccessToken(env);
+  if (!tokenResult.success) {
+    return tokenResult;
+  }
+
+  const limit = options.limit ?? 50;
+  const url = `https://bigquery.googleapis.com/bigquery/v2/projects/${env.BQ_PROJECT_ID}/queries`;
+
+  // Query prompts from prompt-lab source, grouped by prompt text and timestamp
+  let query = `
+    SELECT
+      prompt,
+      collected_at,
+      ARRAY_AGG(STRUCT(
+        id,
+        model,
+        company,
+        response,
+        latency_ms,
+        error,
+        success
+      )) as responses
+    FROM \`${env.BQ_PROJECT_ID}.${env.BQ_DATASET_ID}.${env.BQ_TABLE_ID}\`
+    WHERE source = 'prompt-lab'
+  `;
+
+  const queryParameters: Array<{
+    name: string;
+    parameterType: { type: string };
+    parameterValue: { value: string };
+  }> = [];
+
+  if (options.search) {
+    query += ` AND LOWER(prompt) LIKE CONCAT('%', LOWER(@search), '%')`;
+    queryParameters.push({
+      name: 'search',
+      parameterType: { type: 'STRING' },
+      parameterValue: { value: options.search },
+    });
+  }
+
+  query += `
+    GROUP BY prompt, collected_at
+    ORDER BY collected_at DESC
+    LIMIT @limit
+  `;
+
+  queryParameters.push({
+    name: 'limit',
+    parameterType: { type: 'INT64' },
+    parameterValue: { value: String(limit) },
+  });
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${tokenResult.data}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query,
+        useLegacySql: false,
+        parameterMode: 'NAMED',
+        queryParameters,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        success: false,
+        error: `BigQuery query failed: ${response.status} ${errorText}`,
+      };
+    }
+
+    const result = (await response.json()) as {
+      jobComplete: boolean;
+      schema: {
+        fields: Array<{ name: string; type: string }>;
+      };
+      rows?: Array<{
+        f: Array<{ v: unknown }>;
+      }>;
+    };
+
+    if (!result.jobComplete) {
+      return {
+        success: false,
+        error: 'BigQuery query did not complete synchronously',
+      };
+    }
+
+    // Parse the results - prompt, collected_at, responses array
+    const prompts: PromptLabQuery[] = (result.rows ?? []).map((row) => {
+      const prompt = row.f[0].v as string;
+      const collected_at = row.f[1].v as string;
+      const responsesArray = row.f[2].v as Array<{ v: { f: Array<{ v: unknown }> } }>;
+
+      const responses = (responsesArray ?? []).map((r) => {
+        const fields = r.v.f;
+        return {
+          id: fields[0].v as string,
+          model: fields[1].v as string,
+          company: fields[2].v as string,
+          response: fields[3].v as string | null,
+          latency_ms: parseInt(fields[4].v as string, 10) || 0,
+          error: fields[5].v as string | null,
+          success: fields[6].v === true || fields[6].v === 'true',
+        };
+      });
+
+      return {
+        id: responses[0]?.id ?? crypto.randomUUID(),
+        collected_at,
+        prompt,
+        responses,
+      };
+    });
+
+    return { success: true, data: prompts };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return { success: false, error: `BigQuery query failed: ${message}` };

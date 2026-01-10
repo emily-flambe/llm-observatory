@@ -105,6 +105,7 @@ export async function collectForTopic(
   const bqRow: BigQueryRow = {
     id: responseId,
     collected_at: collectedAt,
+    source: 'collect',
     company: model.provider,
     product: extractProductFamily(model.model_name),
     model: model.model_name,
