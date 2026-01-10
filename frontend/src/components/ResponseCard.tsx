@@ -2,11 +2,11 @@ import { useState } from 'react';
 
 interface Response {
   id: string;
-  model_name: string;
-  provider: string;
-  raw_response: string;
+  model: string;
+  company: string;
+  response: string | null;
   collected_at: string;
-  latency_ms: number | null;
+  latency_ms: number;
   error: string | null;
 }
 
@@ -39,14 +39,15 @@ export default function ResponseCard({ response }: ResponseCardProps) {
     );
   }
 
-  const preview = response.raw_response.slice(0, 300);
-  const hasMore = response.raw_response.length > 300;
+  const text = response.response ?? '';
+  const preview = text.slice(0, 300);
+  const hasMore = text.length > 300;
 
   return (
     <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4">
       <div className="prose prose-invert prose-sm max-w-none">
         <p className="text-slate-300 whitespace-pre-wrap">
-          {expanded ? response.raw_response : preview}
+          {expanded ? text : preview}
           {hasMore && !expanded && '...'}
         </p>
       </div>

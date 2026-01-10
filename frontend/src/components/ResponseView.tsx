@@ -9,11 +9,11 @@ interface Topic {
 
 interface Response {
   id: string;
-  model_name: string;
-  provider: string;
-  raw_response: string;
+  model: string;
+  company: string;
+  response: string | null;
   collected_at: string;
-  latency_ms: number | null;
+  latency_ms: number;
   error: string | null;
 }
 
@@ -65,8 +65,8 @@ export default function ResponseView({ topic }: ResponseViewProps) {
 
   // Group by model
   const byModel = responses.reduce((acc, r) => {
-    if (!acc[r.model_name]) acc[r.model_name] = [];
-    acc[r.model_name].push(r);
+    if (!acc[r.model]) acc[r.model] = [];
+    acc[r.model].push(r);
     return acc;
   }, {} as Record<string, Response[]>);
 
