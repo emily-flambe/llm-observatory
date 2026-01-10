@@ -1,6 +1,7 @@
 -- Initial topics (minimal set for MVP)
 INSERT OR IGNORE INTO topics (id, name, description) VALUES
-  ('climate-change', 'Climate Change', 'Global warming and environmental policy');
+  ('climate-change', 'Climate Change', 'Global warming and environmental policy'),
+  ('cats', 'Cats', 'Domestic cats and feline behavior');
 
 -- Initial prompt templates
 INSERT OR IGNORE INTO prompt_templates (id, name, template, description) VALUES
