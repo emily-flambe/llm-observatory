@@ -32,3 +32,11 @@ CREATE TABLE IF NOT EXISTS models (
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );
+
+-- Rate limiting (daily request counts)
+CREATE TABLE IF NOT EXISTS rate_limits (
+    date TEXT NOT NULL,
+    endpoint TEXT NOT NULL,
+    request_count INTEGER DEFAULT 0,
+    PRIMARY KEY (date, endpoint)
+);

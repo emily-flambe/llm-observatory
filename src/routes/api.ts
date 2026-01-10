@@ -14,6 +14,7 @@ import { createLLMProvider } from '../services/llm';
 import { getModel } from '../services/storage';
 import { queryResponses, getTopicIdsWithResponses } from '../services/bigquery';
 import { requireAccess } from '../middleware/access';
+import { checkRateLimit, incrementRateLimit, getRateLimitStatus } from '../services/ratelimit';
 
 type Variables = {
   userEmail?: string;
@@ -147,8 +148,27 @@ api.get('/models', async (c) => {
 const admin = new Hono<{ Bindings: Env; Variables: Variables }>();
 admin.use('*', requireAccess);
 
-// Trigger collection (protected)
+// Get rate limit status
+admin.get('/rate-limits', async (c) => {
+  const status = await getRateLimitStatus(c.env.DB);
+  return c.json(status);
+});
+
+// Trigger collection (protected + rate limited)
 admin.post('/collect', async (c) => {
+  // Check rate limit (1 request = 1 model)
+  const rateLimit = await checkRateLimit(c.env.DB, 'collect');
+  if (!rateLimit.allowed) {
+    return c.json(
+      {
+        error: 'Daily rate limit exceeded',
+        limit: rateLimit.limit,
+        current: rateLimit.current,
+        resetsAt: 'midnight UTC',
+      },
+      429
+    );
+  }
   const body = await c.req.json<{
     topicId: string;
     modelId: string;
@@ -160,6 +180,9 @@ admin.post('/collect', async (c) => {
   }
 
   const result = await collectForTopic(body.topicId, body.modelId, body.promptTemplateId, c.env);
+
+  // Increment rate limit counter
+  await incrementRateLimit(c.env.DB, 'collect', 1);
 
   if (result.success) {
     return c.json({
@@ -179,7 +202,7 @@ admin.post('/collect', async (c) => {
   }
 });
 
-// Batch collect (protected) - collects for multiple combinations
+// Batch collect (protected + rate limited) - collects for multiple combinations
 admin.post('/collect-batch', async (c) => {
   const body = await c.req.json<{
     topicId: string;
@@ -196,6 +219,23 @@ admin.post('/collect-batch', async (c) => {
   }
 
   const count = body.count ?? 1;
+  const totalRequests = body.modelIds.length * count;
+
+  // Check rate limit before starting batch
+  const rateLimit = await checkRateLimit(c.env.DB, 'collect');
+  if (rateLimit.remaining < totalRequests) {
+    return c.json(
+      {
+        error: 'Batch would exceed daily rate limit',
+        requested: totalRequests,
+        remaining: rateLimit.remaining,
+        limit: rateLimit.limit,
+        resetsAt: 'midnight UTC',
+      },
+      429
+    );
+  }
+
   const results: Array<{
     modelId: string;
     iteration: number;
@@ -219,6 +259,9 @@ admin.post('/collect-batch', async (c) => {
     }
   }
 
+  // Increment rate limit by total requests made
+  await incrementRateLimit(c.env.DB, 'collect', results.length);
+
   return c.json({
     total: results.length,
     successful: results.filter((r) => r.success).length,
@@ -227,7 +270,7 @@ admin.post('/collect-batch', async (c) => {
   });
 });
 
-// Freeform prompt (protected) - send prompt to selected models
+// Freeform prompt (protected + rate limited) - send prompt to selected models
 admin.post('/prompt', async (c) => {
   const body = await c.req.json<{
     prompt: string;
@@ -236,6 +279,21 @@ admin.post('/prompt', async (c) => {
 
   if (!body.prompt || !body.modelIds?.length) {
     return c.json({ error: 'prompt and modelIds (non-empty array) are required' }, 400);
+  }
+
+  // Check rate limit
+  const rateLimit = await checkRateLimit(c.env.DB, 'prompt');
+  if (rateLimit.remaining < body.modelIds.length) {
+    return c.json(
+      {
+        error: 'Would exceed daily prompt rate limit',
+        requested: body.modelIds.length,
+        remaining: rateLimit.remaining,
+        limit: rateLimit.limit,
+        resetsAt: 'midnight UTC',
+      },
+      429
+    );
   }
 
   const results: Array<{
@@ -281,6 +339,9 @@ admin.post('/prompt', async (c) => {
       });
     }
   }
+
+  // Increment rate limit by number of models queried
+  await incrementRateLimit(c.env.DB, 'prompt', results.length);
 
   return c.json({ results });
 });

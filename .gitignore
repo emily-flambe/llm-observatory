@@ -36,3 +36,4 @@ test-results/
 # Misc
 *.local
 .secrets/
+.playwright-mcp/
