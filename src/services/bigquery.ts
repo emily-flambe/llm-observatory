@@ -20,8 +20,9 @@ export interface BigQueryRow {
   model: string; // specific model like "gpt-4o"
   topic_id: string;
   topic_name: string;
-  topic_category: string;
-  prompt: string;
+  prompt_template_id: string;
+  prompt_template_name: string;
+  prompt: string; // rendered prompt
   response: string | null;
   latency_ms: number;
   input_tokens: number;
@@ -261,7 +262,8 @@ export async function insertRow(
               model: row.model,
               topic_id: row.topic_id,
               topic_name: row.topic_name,
-              topic_category: row.topic_category,
+              prompt_template_id: row.prompt_template_id,
+              prompt_template_name: row.prompt_template_name,
               prompt: row.prompt,
               response: row.response,
               latency_ms: row.latency_ms,
@@ -410,7 +412,8 @@ export async function queryResponses(
         model: getValue('model') ?? '',
         topic_id: getValue('topic_id') ?? '',
         topic_name: getValue('topic_name') ?? '',
-        topic_category: getValue('topic_category') ?? '',
+        prompt_template_id: getValue('prompt_template_id') ?? '',
+        prompt_template_name: getValue('prompt_template_name') ?? '',
         prompt: getValue('prompt') ?? '',
         response: getValue('response'),
         latency_ms: parseInt(getValue('latency_ms') ?? '0', 10),
@@ -428,6 +431,70 @@ export async function queryResponses(
         totalRows: parseInt(result.totalRows, 10),
       },
     };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return { success: false, error: `BigQuery query failed: ${message}` };
+  }
+}
+
+/**
+ * Get distinct topic IDs that have responses in BigQuery
+ */
+export async function getTopicIdsWithResponses(
+  env: BigQueryEnv
+): Promise<BigQueryResult<string[]>> {
+  const tokenResult = await getAccessToken(env);
+  if (!tokenResult.success) {
+    return tokenResult;
+  }
+
+  const url = `https://bigquery.googleapis.com/bigquery/v2/projects/${env.BQ_PROJECT_ID}/queries`;
+
+  const query = `
+    SELECT DISTINCT topic_id
+    FROM \`${env.BQ_PROJECT_ID}.${env.BQ_DATASET_ID}.${env.BQ_TABLE_ID}\`
+    WHERE success = TRUE
+    ORDER BY topic_id
+  `;
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${tokenResult.data}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query,
+        useLegacySql: false,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        success: false,
+        error: `BigQuery query failed: ${response.status} ${errorText}`,
+      };
+    }
+
+    const result = (await response.json()) as {
+      jobComplete: boolean;
+      rows?: Array<{
+        f: Array<{ v: string | null }>;
+      }>;
+    };
+
+    if (!result.jobComplete) {
+      return {
+        success: false,
+        error: 'BigQuery query did not complete synchronously',
+      };
+    }
+
+    const topicIds = (result.rows ?? []).map((row) => row.f[0].v ?? '').filter(Boolean);
+
+    return { success: true, data: topicIds };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return { success: false, error: `BigQuery query failed: ${message}` };

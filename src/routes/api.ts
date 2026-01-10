@@ -1,17 +1,50 @@
 import { Hono } from 'hono';
 import type { Env } from '../types/env';
-import { getTopics, getTopic, getModels } from '../services/storage';
+import {
+  getTopics,
+  getTopic,
+  createTopic,
+  getModels,
+  getPromptTemplates,
+  getPromptTemplate,
+  createPromptTemplate,
+} from '../services/storage';
 import { collectForTopic } from '../services/collector';
-import { queryResponses } from '../services/bigquery';
+import { queryResponses, getTopicIdsWithResponses } from '../services/bigquery';
+import { requireAccess } from '../middleware/access';
 
-const api = new Hono<{ Bindings: Env }>();
+type Variables = {
+  userEmail?: string;
+};
+
+const api = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 // Health check
 api.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
+// ==================== Topics ====================
+
 // List all topics
 api.get('/topics', async (c) => {
   const topics = await getTopics(c.env.DB);
+  return c.json({ topics });
+});
+
+// List only topics that have responses (for Browse page)
+api.get('/topics-with-responses', async (c) => {
+  // Get topic IDs that have responses in BigQuery
+  const topicIdsResult = await getTopicIdsWithResponses(c.env);
+  if (!topicIdsResult.success) {
+    return c.json({ error: topicIdsResult.error }, 500);
+  }
+
+  // Get all topics from D1
+  const allTopics = await getTopics(c.env.DB);
+
+  // Filter to only topics with responses
+  const topicIdsSet = new Set(topicIdsResult.data);
+  const topics = allTopics.filter((t) => topicIdsSet.has(t.id));
+
   return c.json({ topics });
 });
 
@@ -23,6 +56,24 @@ api.get('/topics/:id', async (c) => {
     return c.json({ error: 'Topic not found' }, 404);
   }
   return c.json({ topic });
+});
+
+// Create a topic
+api.post('/topics', async (c) => {
+  const body = await c.req.json<{ id: string; name: string; description?: string }>();
+
+  if (!body.id || !body.name) {
+    return c.json({ error: 'id and name are required' }, 400);
+  }
+
+  // Check if topic already exists
+  const existing = await getTopic(c.env.DB, body.id);
+  if (existing) {
+    return c.json({ error: 'Topic already exists' }, 409);
+  }
+
+  const topic = await createTopic(c.env.DB, body);
+  return c.json({ topic }, 201);
 });
 
 // Get responses for a topic (from BigQuery)
@@ -39,26 +90,74 @@ api.get('/topics/:id/responses', async (c) => {
   return c.json({ responses: result.data.rows, totalRows: result.data.totalRows });
 });
 
+// ==================== Prompt Templates ====================
+
+// List all prompt templates
+api.get('/prompt-templates', async (c) => {
+  const templates = await getPromptTemplates(c.env.DB);
+  return c.json({ templates });
+});
+
+// Get single prompt template
+api.get('/prompt-templates/:id', async (c) => {
+  const { id } = c.req.param();
+  const template = await getPromptTemplate(c.env.DB, id);
+  if (!template) {
+    return c.json({ error: 'Prompt template not found' }, 404);
+  }
+  return c.json({ template });
+});
+
+// Create a prompt template
+api.post('/prompt-templates', async (c) => {
+  const body = await c.req.json<{
+    id: string;
+    name: string;
+    template: string;
+    description?: string;
+  }>();
+
+  if (!body.id || !body.name || !body.template) {
+    return c.json({ error: 'id, name, and template are required' }, 400);
+  }
+
+  // Check if template already exists
+  const existing = await getPromptTemplate(c.env.DB, body.id);
+  if (existing) {
+    return c.json({ error: 'Prompt template already exists' }, 409);
+  }
+
+  const template = await createPromptTemplate(c.env.DB, body);
+  return c.json({ template }, 201);
+});
+
+// ==================== Models ====================
+
 // List all models
 api.get('/models', async (c) => {
   const models = await getModels(c.env.DB);
   return c.json({ models });
 });
 
-// Admin: Trigger collection (protected)
-api.post('/admin/collect', async (c) => {
-  const authHeader = c.req.header('Authorization');
-  if (authHeader !== `Bearer ${c.env.ADMIN_API_KEY}`) {
-    return c.json({ error: 'Unauthorized' }, 401);
+// ==================== Collection (Protected by Cloudflare Access) ====================
+
+// Admin routes - protected by Access middleware
+const admin = new Hono<{ Bindings: Env; Variables: Variables }>();
+admin.use('*', requireAccess);
+
+// Trigger collection (protected)
+admin.post('/collect', async (c) => {
+  const body = await c.req.json<{
+    topicId: string;
+    modelId: string;
+    promptTemplateId: string;
+  }>();
+
+  if (!body.topicId || !body.modelId || !body.promptTemplateId) {
+    return c.json({ error: 'topicId, modelId, and promptTemplateId are required' }, 400);
   }
 
-  const body = await c.req.json<{ topicId: string; modelId: string }>();
-
-  if (!body.topicId || !body.modelId) {
-    return c.json({ error: 'topicId and modelId are required' }, 400);
-  }
-
-  const result = await collectForTopic(body.topicId, body.modelId, c.env);
+  const result = await collectForTopic(body.topicId, body.modelId, body.promptTemplateId, c.env);
 
   if (result.success) {
     return c.json({
@@ -78,25 +177,41 @@ api.post('/admin/collect', async (c) => {
   }
 });
 
-// Admin: Collect all combinations (protected)
-api.post('/admin/collect-all', async (c) => {
-  const authHeader = c.req.header('Authorization');
-  if (authHeader !== `Bearer ${c.env.ADMIN_API_KEY}`) {
-    return c.json({ error: 'Unauthorized' }, 401);
+// Batch collect (protected) - collects for multiple combinations
+admin.post('/collect-batch', async (c) => {
+  const body = await c.req.json<{
+    topicId: string;
+    promptTemplateId: string;
+    modelIds: string[];
+    count?: number;
+  }>();
+
+  if (!body.topicId || !body.promptTemplateId || !body.modelIds?.length) {
+    return c.json(
+      { error: 'topicId, promptTemplateId, and modelIds (non-empty array) are required' },
+      400
+    );
   }
 
-  const topics = await getTopics(c.env.DB);
-  const models = await getModels(c.env.DB);
+  const count = body.count ?? 1;
+  const results: Array<{
+    modelId: string;
+    iteration: number;
+    success: boolean;
+    responseId: string;
+    latencyMs?: number;
+    error?: string;
+  }> = [];
 
-  const results: Array<{ topicId: string; modelId: string; success: boolean; error?: string }> = [];
-
-  for (const topic of topics) {
-    for (const model of models) {
-      const result = await collectForTopic(topic.id, model.id, c.env);
+  for (const modelId of body.modelIds) {
+    for (let i = 0; i < count; i++) {
+      const result = await collectForTopic(body.topicId, modelId, body.promptTemplateId, c.env);
       results.push({
-        topicId: topic.id,
-        modelId: model.id,
+        modelId,
+        iteration: i + 1,
         success: result.success,
+        responseId: result.responseId,
+        latencyMs: result.latencyMs,
         error: result.error,
       });
     }
@@ -109,5 +224,7 @@ api.post('/admin/collect-all', async (c) => {
     results,
   });
 });
+
+api.route('/admin', admin);
 
 export { api };

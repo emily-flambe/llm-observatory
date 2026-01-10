@@ -5,9 +5,21 @@
 CREATE TABLE IF NOT EXISTS topics (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    category TEXT NOT NULL,
+    description TEXT,
     active INTEGER DEFAULT 1,
-    created_at TEXT DEFAULT (datetime('now'))
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Prompt templates
+CREATE TABLE IF NOT EXISTS prompt_templates (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    template TEXT NOT NULL,
+    description TEXT,
+    active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
 );
 
 -- LLM model configurations
@@ -16,5 +28,7 @@ CREATE TABLE IF NOT EXISTS models (
     provider TEXT NOT NULL,
     model_name TEXT NOT NULL,
     display_name TEXT NOT NULL,
-    active INTEGER DEFAULT 1
+    active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
 );

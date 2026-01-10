@@ -1,14 +1,5 @@
 import { useState } from 'react';
-
-interface Response {
-  id: string;
-  model_name: string;
-  provider: string;
-  raw_response: string;
-  collected_at: string;
-  latency_ms: number | null;
-  error: string | null;
-}
+import type { Response } from '../types';
 
 interface ResponseCardProps {
   response: Response;
@@ -30,23 +21,30 @@ export default function ResponseCard({ response }: ResponseCardProps) {
 
   if (response.error) {
     return (
-      <div className="bg-red-950/50 border border-red-900 rounded-lg p-4">
-        <div className="text-red-400 text-sm">Error: {response.error}</div>
-        <div className="text-xs text-red-600 mt-1">
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="text-error text-sm">Error: {response.error}</div>
+        <div className="text-xs text-error/70 mt-1">
           {formatDate(response.collected_at)}
         </div>
       </div>
     );
   }
 
-  const preview = response.raw_response.slice(0, 300);
-  const hasMore = response.raw_response.length > 300;
+  const content = response.response || '';
+  const preview = content.slice(0, 300);
+  const hasMore = content.length > 300;
 
   return (
-    <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4">
-      <div className="prose prose-invert prose-sm max-w-none">
-        <p className="text-slate-300 whitespace-pre-wrap">
-          {expanded ? response.raw_response : preview}
+    <div className="bg-white border border-border rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-2 text-xs text-ink-muted">
+        <span className="text-amber">{response.prompt_template_name}</span>
+        <span>•</span>
+        <span>{response.company}</span>
+      </div>
+
+      <div className="prose prose-sm max-w-none">
+        <p className="text-ink-light whitespace-pre-wrap">
+          {expanded ? content : preview}
           {hasMore && !expanded && '...'}
         </p>
       </div>
@@ -54,16 +52,19 @@ export default function ResponseCard({ response }: ResponseCardProps) {
       {hasMore && (
         <button
           onClick={() => setExpanded(!expanded)}
-          className="mt-3 text-sm text-indigo-400 hover:text-indigo-300"
+          className="mt-3 text-sm text-amber hover:text-amber-light"
         >
           {expanded ? 'Show less' : 'Show more'}
         </button>
       )}
 
-      <div className="flex items-center gap-4 mt-4 pt-3 border-t border-slate-700 text-xs text-slate-500">
+      <div className="flex items-center gap-4 mt-4 pt-3 border-t border-border text-xs text-ink-muted">
         <span>{formatDate(response.collected_at)}</span>
-        {response.latency_ms && (
+        {response.latency_ms > 0 && (
           <span>{(response.latency_ms / 1000).toFixed(1)}s</span>
+        )}
+        {response.input_tokens > 0 && (
+          <span>{response.input_tokens + response.output_tokens} tokens</span>
         )}
       </div>
     </div>
