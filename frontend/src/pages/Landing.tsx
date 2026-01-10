@@ -51,7 +51,9 @@ export default function Landing() {
     if (name.includes('gpt-4o')) return 'https://platform.openai.com/docs/models/gpt-4o';
 
     // Anthropic
-    if (name.includes('claude-sonnet')) return 'https://docs.anthropic.com/en/docs/about-claude/models';
+    if (name.includes('claude-sonnet-4-5') || name.includes('claude-sonnet-4.5'))
+      return 'https://www.anthropic.com/claude/sonnet';
+    if (name.includes('claude-sonnet')) return 'https://www.anthropic.com/claude/sonnet';
 
     // Google
     if (name.includes('gemini')) return 'https://ai.google.dev/gemini-api/docs/models/gemini';

@@ -15,8 +15,25 @@ function CollectPage({ onCollectionComplete }: { onCollectionComplete: () => voi
   );
 }
 
-function BrowsePage({ topics }: { topics: Topic[] }) {
+function BrowsePage({ topics, error }: { topics: Topic[]; error: string | null }) {
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
+
+  if (error) {
+    return (
+      <div className="text-center py-20">
+        <div className="text-error mb-2">Failed to load topics</div>
+        <div className="text-sm text-ink-muted">{error}</div>
+      </div>
+    );
+  }
+
+  if (topics.length === 0) {
+    return (
+      <div className="text-center py-20 text-ink-muted">
+        No topics with responses yet. Use the Collect page to gather responses.
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
@@ -124,13 +141,21 @@ export default function App() {
 
   const loadTopics = () => {
     fetch('/api/topics-with-responses')
-      .then(res => res.json() as Promise<TopicsResponse>)
-      .then(data => {
-        setTopics(data.topics);
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to load topics');
+        }
+        return data as TopicsResponse;
+      })
+      .then((data) => {
+        setTopics(data.topics || []);
         setLoading(false);
+        setError(null);
       })
       .catch((err: Error) => {
         setError(err.message);
+        setTopics([]);
         setLoading(false);
       });
   };
@@ -139,22 +164,6 @@ export default function App() {
     loadTopics();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-ink-muted">Loading...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-error">Error: {error}</div>
-      </div>
-    );
-  }
-
   return (
     <BrowserRouter>
       <Layout loadTopics={loadTopics}>
@@ -162,7 +171,16 @@ export default function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/prompt-lab" element={<PromptLab />} />
           <Route path="/collect" element={<CollectPage onCollectionComplete={loadTopics} />} />
-          <Route path="/browse" element={<BrowsePage topics={topics} />} />
+          <Route
+            path="/browse"
+            element={
+              loading ? (
+                <div className="text-center py-20 text-ink-muted">Loading topics...</div>
+              ) : (
+                <BrowsePage topics={topics} error={error} />
+              )
+            }
+          />
         </Routes>
       </Layout>
     </BrowserRouter>

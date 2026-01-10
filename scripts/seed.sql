@@ -9,7 +9,7 @@ INSERT OR IGNORE INTO prompt_templates (id, name, template, description) VALUES
 -- Initial models (four providers for MVP)
 INSERT OR IGNORE INTO models (id, provider, model_name, display_name) VALUES
   ('openai-gpt4o', 'openai', 'gpt-4o', 'GPT-4o'),
-  ('anthropic-claude-sonnet', 'anthropic', 'claude-sonnet-4-20250514', 'Claude Sonnet'),
+  ('anthropic-claude-sonnet', 'anthropic', 'claude-sonnet-4-5-20250929', 'Claude Sonnet 4.5'),
   ('google-gemini-flash', 'google', 'gemini-2.0-flash', 'Gemini 2.0 Flash'),
   ('cloudflare-llama', 'cloudflare', '@cf/meta/llama-3.1-8b-instruct-fast', 'Llama 3.1 8B'),
   ('cloudflare-llama4-scout', 'cloudflare', '@cf/meta/llama-4-scout-17b-16e-instruct', 'Llama 4 Scout 17B'),
