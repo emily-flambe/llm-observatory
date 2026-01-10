@@ -3,11 +3,16 @@ account_id = "facf6619808dc039df729531bbb26d1d"
 main = "src/index.ts"
 compatibility_date = "2025-01-09"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+preview_urls = true
+
+# Custom domain
+[[routes]]
+pattern = "observatory.emilycogsdill.com"
+custom_domain = true
 
 [ai]
 binding = "AI"
-workers_dev = true
-preview_urls = true
 
 [assets]
 directory = "./dist"
