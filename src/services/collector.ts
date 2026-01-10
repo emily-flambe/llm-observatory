@@ -220,12 +220,22 @@ async function callCloudflare(prompt: string, model: string, ai: Ai): Promise<LL
   const response = (await ai.run(model as Parameters<Ai['run']>[0], {
     messages: [{ role: 'user', content: prompt }],
     max_tokens: 1024,
-  })) as { response?: string } | string;
+  })) as
+    | { response?: string }
+    | { choices?: Array<{ message?: { content?: string } }> }
+    | string;
 
-  const content =
-    typeof response === 'string'
-      ? response
-      : response?.response ?? '';
+  // Cloudflare AI models return different formats:
+  // - Legacy models: { response: string }
+  // - Newer models (Qwen3, etc): OpenAI-compatible { choices: [{ message: { content: string } }] }
+  let content = '';
+  if (typeof response === 'string') {
+    content = response;
+  } else if ('choices' in response && response.choices?.[0]?.message?.content) {
+    content = response.choices[0].message.content;
+  } else if ('response' in response && response.response) {
+    content = response.response;
+  }
 
   if (!content) {
     throw new Error('Cloudflare AI returned empty response');

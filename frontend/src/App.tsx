@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import TopicList from './components/TopicList';
 import ResponseView from './components/ResponseView';
 import CollectionForm from './components/CollectionForm';
+import Landing from './pages/Landing';
+import PromptLab from './pages/PromptLab';
 import type { Topic, TopicsResponse } from './types';
 
 function CollectPage({ onCollectionComplete }: { onCollectionComplete: () => void }) {
@@ -54,9 +56,34 @@ function Layout({ children, loadTopics }: { children: React.ReactNode; loadTopic
             </div>
             <nav className="flex border border-border rounded-lg overflow-hidden">
               <NavLink
-                to="/collect"
+                to="/"
+                end
                 className={({ isActive }) =>
                   `px-4 py-2 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-amber text-white'
+                      : 'bg-white text-ink-light hover:bg-paper-dark'
+                  }`
+                }
+              >
+                Home
+              </NavLink>
+              <NavLink
+                to="/prompt-lab"
+                className={({ isActive }) =>
+                  `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
+                    isActive
+                      ? 'bg-amber text-white'
+                      : 'bg-white text-ink-light hover:bg-paper-dark'
+                  }`
+                }
+              >
+                Prompt Lab
+              </NavLink>
+              <NavLink
+                to="/collect"
+                className={({ isActive }) =>
+                  `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
                     isActive
                       ? 'bg-amber text-white'
                       : 'bg-white text-ink-light hover:bg-paper-dark'
@@ -132,7 +159,8 @@ export default function App() {
     <BrowserRouter>
       <Layout loadTopics={loadTopics}>
         <Routes>
-          <Route path="/" element={<Navigate to="/collect" replace />} />
+          <Route path="/" element={<Landing />} />
+          <Route path="/prompt-lab" element={<PromptLab />} />
           <Route path="/collect" element={<CollectPage onCollectionComplete={loadTopics} />} />
           <Route path="/browse" element={<BrowsePage topics={topics} />} />
         </Routes>

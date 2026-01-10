@@ -18,4 +18,4 @@ INSERT OR IGNORE INTO models (id, provider, model_name, display_name) VALUES
   ('cloudflare-qwq-32b', 'cloudflare', '@cf/qwen/qwq-32b', 'QwQ 32B'),
   ('cloudflare-mistral-small', 'cloudflare', '@cf/mistralai/mistral-small-3.1-24b-instruct', 'Mistral Small 3.1 24B'),
   ('cloudflare-gemma3-12b', 'cloudflare', '@cf/google/gemma-3-12b-it', 'Gemma 3 12B'),
-  ('cloudflare-deepseek-r1', 'cloudflare', '@cf/deepseek/deepseek-r1-distill-qwen-32b', 'DeepSeek R1 32B');
+  ('cloudflare-deepseek-r1', 'cloudflare', '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', 'DeepSeek R1 32B');

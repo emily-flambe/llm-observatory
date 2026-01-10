@@ -10,6 +10,8 @@ import {
   createPromptTemplate,
 } from '../services/storage';
 import { collectForTopic } from '../services/collector';
+import { createLLMProvider } from '../services/llm';
+import { getModel } from '../services/storage';
 import { queryResponses, getTopicIdsWithResponses } from '../services/bigquery';
 import { requireAccess } from '../middleware/access';
 
@@ -223,6 +225,64 @@ admin.post('/collect-batch', async (c) => {
     failed: results.filter((r) => !r.success).length,
     results,
   });
+});
+
+// Freeform prompt (protected) - send prompt to selected models
+admin.post('/prompt', async (c) => {
+  const body = await c.req.json<{
+    prompt: string;
+    modelIds: string[];
+  }>();
+
+  if (!body.prompt || !body.modelIds?.length) {
+    return c.json({ error: 'prompt and modelIds (non-empty array) are required' }, 400);
+  }
+
+  const results: Array<{
+    modelId: string;
+    model: string;
+    response?: string;
+    error?: string;
+    latencyMs?: number;
+    success: boolean;
+  }> = [];
+
+  for (const modelId of body.modelIds) {
+    const model = await getModel(c.env.DB, modelId);
+    if (!model) {
+      results.push({
+        modelId,
+        model: modelId,
+        error: 'Model not found',
+        success: false,
+      });
+      continue;
+    }
+
+    try {
+      const provider = createLLMProvider(model.id, model.provider, model.model_name, c.env);
+      const start = Date.now();
+      const response = await provider.complete({ prompt: body.prompt });
+      const latencyMs = Date.now() - start;
+
+      results.push({
+        modelId,
+        model: model.display_name,
+        response: response.content,
+        latencyMs,
+        success: true,
+      });
+    } catch (err) {
+      results.push({
+        modelId,
+        model: model.display_name,
+        error: err instanceof Error ? err.message : 'Unknown error',
+        success: false,
+      });
+    }
+  }
+
+  return c.json({ results });
 });
 
 api.route('/admin', admin);

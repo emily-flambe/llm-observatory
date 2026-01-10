@@ -16,15 +16,24 @@ export class CloudflareProvider implements LLMProvider {
     const response = (await this.ai.run(this.modelName as Parameters<Ai['run']>[0], {
       messages: [{ role: 'user', content: request.prompt }],
       max_tokens: maxTokens,
-    })) as { response?: string } | string;
+    })) as
+      | { response?: string }
+      | { choices?: Array<{ message?: { content?: string } }> }
+      | string;
 
     const latencyMs = Date.now() - startTime;
 
-    // Cloudflare AI text generation models return { response: string }
-    const content =
-      typeof response === 'string'
-        ? response
-        : response?.response ?? '';
+    // Cloudflare AI models return different formats:
+    // - Legacy models: { response: string }
+    // - Newer models (Qwen3, etc): OpenAI-compatible { choices: [{ message: { content: string } }] }
+    let content = '';
+    if (typeof response === 'string') {
+      content = response;
+    } else if ('choices' in response && response.choices?.[0]?.message?.content) {
+      content = response.choices[0].message.content;
+    } else if ('response' in response && response.response) {
+      content = response.response;
+    }
 
     if (!content) {
       throw new LLMError('Cloudflare AI returned empty response', 'cloudflare');

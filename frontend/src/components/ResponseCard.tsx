@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import type { Response } from '../types';
+import { parseBigQueryTimestamp } from '../utils/date';
+import { renderMarkdown } from '../utils/markdown';
 
 interface ResponseCardProps {
   response: Response;
@@ -9,7 +11,8 @@ export default function ResponseCard({ response }: ResponseCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+    const date = parseBigQueryTimestamp(dateStr);
+    if (isNaN(date.getTime())) return 'Unknown date';
     return date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -42,11 +45,15 @@ export default function ResponseCard({ response }: ResponseCardProps) {
         <span>{response.company}</span>
       </div>
 
-      <div className="prose prose-sm max-w-none">
-        <p className="text-ink-light whitespace-pre-wrap">
-          {expanded ? content : preview}
-          {hasMore && !expanded && '...'}
-        </p>
+      <div className="text-ink-light text-sm markdown-content">
+        {expanded ? (
+          <div dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
+        ) : (
+          <p>
+            {preview}
+            {hasMore && '...'}
+          </p>
+        )}
       </div>
 
       {hasMore && (
