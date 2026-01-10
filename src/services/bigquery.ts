@@ -438,6 +438,87 @@ export async function queryResponses(
 }
 
 /**
+ * Topic as stored in BigQuery responses
+ */
+export interface BigQueryTopic {
+  id: string;
+  name: string;
+  response_count: number;
+}
+
+/**
+ * Get all topics from BigQuery (derived from responses)
+ */
+export async function getTopicsFromBigQuery(
+  env: BigQueryEnv
+): Promise<BigQueryResult<BigQueryTopic[]>> {
+  const tokenResult = await getAccessToken(env);
+  if (!tokenResult.success) {
+    return tokenResult;
+  }
+
+  const url = `https://bigquery.googleapis.com/bigquery/v2/projects/${env.BQ_PROJECT_ID}/queries`;
+
+  const query = `
+    SELECT
+      topic_id,
+      topic_name,
+      COUNT(*) as response_count
+    FROM \`${env.BQ_PROJECT_ID}.${env.BQ_DATASET_ID}.${env.BQ_TABLE_ID}\`
+    WHERE success = TRUE
+    GROUP BY topic_id, topic_name
+    ORDER BY topic_name
+  `;
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${tokenResult.data}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query,
+        useLegacySql: false,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        success: false,
+        error: `BigQuery query failed: ${response.status} ${errorText}`,
+      };
+    }
+
+    const result = (await response.json()) as {
+      jobComplete: boolean;
+      rows?: Array<{
+        f: Array<{ v: string | null }>;
+      }>;
+    };
+
+    if (!result.jobComplete) {
+      return {
+        success: false,
+        error: 'BigQuery query did not complete synchronously',
+      };
+    }
+
+    const topics: BigQueryTopic[] = (result.rows ?? []).map((row) => ({
+      id: row.f[0].v ?? '',
+      name: row.f[1].v ?? '',
+      response_count: parseInt(row.f[2].v ?? '0', 10),
+    }));
+
+    return { success: true, data: topics };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return { success: false, error: `BigQuery query failed: ${message}` };
+  }
+}
+
+/**
  * Get distinct topic IDs that have responses in BigQuery
  */
 export async function getTopicIdsWithResponses(

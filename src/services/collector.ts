@@ -1,5 +1,5 @@
 import type { Env } from '../types/env';
-import { getTopic, getModel, getPromptTemplate } from './storage';
+import { getModel, getPromptTemplate } from './storage';
 import { insertRow, extractProductFamily, type BigQueryRow } from './bigquery';
 
 export interface CollectionResult {
@@ -10,6 +10,18 @@ export interface CollectionResult {
 }
 
 /**
+ * Generate a slug from a topic name
+ */
+function generateTopicId(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
+
+/**
  * Render a prompt template by replacing {topic} with the topic name
  */
 function renderPrompt(template: string, topicName: string): string {
@@ -17,17 +29,28 @@ function renderPrompt(template: string, topicName: string): string {
 }
 
 export async function collectForTopic(
-  topicId: string,
+  topicIdOrName: string,
   modelId: string,
   promptTemplateId: string,
-  env: Env
+  env: Env,
+  topicName?: string // Optional: if provided, topicIdOrName is treated as ID
 ): Promise<CollectionResult> {
   const responseId = crypto.randomUUID();
   const collectedAt = new Date().toISOString();
 
-  const topic = await getTopic(env.DB, topicId);
-  if (!topic) {
-    return { success: false, responseId, error: `Topic not found: ${topicId}` };
+  // Determine topic ID and name
+  // If topicName is provided, use topicIdOrName as ID
+  // Otherwise, topicIdOrName could be either - we'll use it as name and generate ID
+  let finalTopicId: string;
+  let finalTopicName: string;
+
+  if (topicName) {
+    finalTopicId = topicIdOrName;
+    finalTopicName = topicName;
+  } else {
+    // Treat as name, generate ID from it
+    finalTopicName = topicIdOrName;
+    finalTopicId = generateTopicId(topicIdOrName);
   }
 
   const model = await getModel(env.DB, modelId);
@@ -40,7 +63,7 @@ export async function collectForTopic(
     return { success: false, responseId, error: `Prompt template not found: ${promptTemplateId}` };
   }
 
-  const prompt = renderPrompt(promptTemplate.template, topic.name);
+  const prompt = renderPrompt(promptTemplate.template, finalTopicName);
 
   const startTime = Date.now();
   let rawResponse = '';
@@ -85,8 +108,8 @@ export async function collectForTopic(
     company: model.provider,
     product: extractProductFamily(model.model_name),
     model: model.model_name,
-    topic_id: topicId,
-    topic_name: topic.name,
+    topic_id: finalTopicId,
+    topic_name: finalTopicName,
     prompt_template_id: promptTemplateId,
     prompt_template_name: promptTemplate.name,
     prompt,

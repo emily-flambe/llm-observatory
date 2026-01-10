@@ -1,9 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../types/env';
 import {
-  getTopics,
-  getTopic,
-  createTopic,
   getModels,
   getPromptTemplates,
   getPromptTemplate,
@@ -12,7 +9,7 @@ import {
 import { collectForTopic } from '../services/collector';
 import { createLLMProvider } from '../services/llm';
 import { getModel } from '../services/storage';
-import { queryResponses, getTopicIdsWithResponses } from '../services/bigquery';
+import { queryResponses, getTopicsFromBigQuery } from '../services/bigquery';
 import { requireAccess } from '../middleware/access';
 import { checkRateLimit, incrementRateLimit, getRateLimitStatus } from '../services/ratelimit';
 
@@ -25,58 +22,58 @@ const api = new Hono<{ Bindings: Env; Variables: Variables }>();
 // Health check
 api.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
-// ==================== Topics ====================
+// ==================== Topics (derived from BigQuery) ====================
 
-// List all topics
+// List all topics (from BigQuery - topics that have responses)
 api.get('/topics', async (c) => {
-  const topics = await getTopics(c.env.DB);
-  return c.json({ topics });
-});
-
-// List only topics that have responses (for Browse page)
-api.get('/topics-with-responses', async (c) => {
-  // Get topic IDs that have responses in BigQuery
-  const topicIdsResult = await getTopicIdsWithResponses(c.env);
-  if (!topicIdsResult.success) {
-    return c.json({ error: topicIdsResult.error }, 500);
+  const result = await getTopicsFromBigQuery(c.env);
+  if (!result.success) {
+    return c.json({ error: result.error }, 500);
   }
-
-  // Get all topics from D1
-  const allTopics = await getTopics(c.env.DB);
-
-  // Filter to only topics with responses
-  const topicIdsSet = new Set(topicIdsResult.data);
-  const topics = allTopics.filter((t) => topicIdsSet.has(t.id));
-
+  // Transform to match expected format
+  const topics = result.data.map((t) => ({
+    id: t.id,
+    name: t.name,
+    description: `${t.response_count} responses`,
+    response_count: t.response_count,
+  }));
   return c.json({ topics });
 });
 
-// Get single topic
+// Alias for backwards compatibility
+api.get('/topics-with-responses', async (c) => {
+  const result = await getTopicsFromBigQuery(c.env);
+  if (!result.success) {
+    return c.json({ error: result.error }, 500);
+  }
+  const topics = result.data.map((t) => ({
+    id: t.id,
+    name: t.name,
+    description: `${t.response_count} responses`,
+    response_count: t.response_count,
+  }));
+  return c.json({ topics });
+});
+
+// Get single topic (from BigQuery)
 api.get('/topics/:id', async (c) => {
   const { id } = c.req.param();
-  const topic = await getTopic(c.env.DB, id);
+  const result = await getTopicsFromBigQuery(c.env);
+  if (!result.success) {
+    return c.json({ error: result.error }, 500);
+  }
+  const topic = result.data.find((t) => t.id === id);
   if (!topic) {
     return c.json({ error: 'Topic not found' }, 404);
   }
-  return c.json({ topic });
-});
-
-// Create a topic
-api.post('/topics', async (c) => {
-  const body = await c.req.json<{ id: string; name: string; description?: string }>();
-
-  if (!body.id || !body.name) {
-    return c.json({ error: 'id and name are required' }, 400);
-  }
-
-  // Check if topic already exists
-  const existing = await getTopic(c.env.DB, body.id);
-  if (existing) {
-    return c.json({ error: 'Topic already exists' }, 409);
-  }
-
-  const topic = await createTopic(c.env.DB, body);
-  return c.json({ topic }, 201);
+  return c.json({
+    topic: {
+      id: topic.id,
+      name: topic.name,
+      description: `${topic.response_count} responses`,
+      response_count: topic.response_count,
+    },
+  });
 });
 
 // Get responses for a topic (from BigQuery)
@@ -170,16 +167,24 @@ admin.post('/collect', async (c) => {
     );
   }
   const body = await c.req.json<{
-    topicId: string;
+    topicId?: string;
+    topicName?: string;
     modelId: string;
     promptTemplateId: string;
   }>();
 
-  if (!body.topicId || !body.modelId || !body.promptTemplateId) {
-    return c.json({ error: 'topicId, modelId, and promptTemplateId are required' }, 400);
+  // Support both topicId (for existing topics) and topicName (for new topics)
+  if ((!body.topicId && !body.topicName) || !body.modelId || !body.promptTemplateId) {
+    return c.json({ error: 'topicId or topicName, modelId, and promptTemplateId are required' }, 400);
   }
 
-  const result = await collectForTopic(body.topicId, body.modelId, body.promptTemplateId, c.env);
+  const result = await collectForTopic(
+    body.topicId || body.topicName!,
+    body.modelId,
+    body.promptTemplateId,
+    c.env,
+    body.topicId ? body.topicName : undefined
+  );
 
   // Increment rate limit counter
   await incrementRateLimit(c.env.DB, 'collect', 1);
@@ -205,15 +210,16 @@ admin.post('/collect', async (c) => {
 // Batch collect (protected + rate limited) - collects for multiple combinations
 admin.post('/collect-batch', async (c) => {
   const body = await c.req.json<{
-    topicId: string;
+    topicId?: string;
+    topicName?: string;
     promptTemplateId: string;
     modelIds: string[];
     count?: number;
   }>();
 
-  if (!body.topicId || !body.promptTemplateId || !body.modelIds?.length) {
+  if ((!body.topicId && !body.topicName) || !body.promptTemplateId || !body.modelIds?.length) {
     return c.json(
-      { error: 'topicId, promptTemplateId, and modelIds (non-empty array) are required' },
+      { error: 'topicId or topicName, promptTemplateId, and modelIds (non-empty array) are required' },
       400
     );
   }
@@ -247,7 +253,13 @@ admin.post('/collect-batch', async (c) => {
 
   for (const modelId of body.modelIds) {
     for (let i = 0; i < count; i++) {
-      const result = await collectForTopic(body.topicId, modelId, body.promptTemplateId, c.env);
+      const result = await collectForTopic(
+        body.topicId || body.topicName!,
+        modelId,
+        body.promptTemplateId,
+        c.env,
+        body.topicId ? body.topicName : undefined
+      );
       results.push({
         modelId,
         iteration: i + 1,

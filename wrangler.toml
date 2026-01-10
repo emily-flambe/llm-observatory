@@ -13,6 +13,7 @@ custom_domain = true
 
 [ai]
 binding = "AI"
+remote = true
 
 [assets]
 directory = "./dist"
