@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(rm -rf ~)",
+      "Bash(*--force*)",
+      "Edit(.dev.vars)",
+      "Edit(.env*)",
+      "Edit(*.key)",
+      "Edit(*.pem)",
+      "Edit(*credentials*)",
+      "Edit(*secret*)",
+      "Write(.dev.vars)",
+      "Write(.env*)",
+      "Write(*.key)",
+      "Write(*.pem)",
+      "Write(*credentials*)",
+      "Write(*secret*)",
+      "Read(.dev.vars)",
+      "Read(.secrets/*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /Users/emilycogsdill/Documents/GitHub/llm-observatory-claude-config && npx eslint --fix \"$CLAUDE_FILE_PATH\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}
