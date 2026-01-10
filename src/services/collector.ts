@@ -1,5 +1,5 @@
 import type { Env } from '../types/env';
-import { getTopic, getModel } from './storage';
+import { getTopic, getModel, getPromptTemplate } from './storage';
 import { insertRow, extractProductFamily, type BigQueryRow } from './bigquery';
 
 export interface CollectionResult {
@@ -9,9 +9,17 @@ export interface CollectionResult {
   error?: string;
 }
 
+/**
+ * Render a prompt template by replacing {topic} with the topic name
+ */
+function renderPrompt(template: string, topicName: string): string {
+  return template.replace(/\{topic\}/gi, topicName);
+}
+
 export async function collectForTopic(
   topicId: string,
   modelId: string,
+  promptTemplateId: string,
   env: Env
 ): Promise<CollectionResult> {
   const responseId = crypto.randomUUID();
@@ -27,7 +35,12 @@ export async function collectForTopic(
     return { success: false, responseId, error: `Model not found: ${modelId}` };
   }
 
-  const prompt = `What is the current state of "${topic.name}"? Provide a brief, factual summary.`;
+  const promptTemplate = await getPromptTemplate(env.DB, promptTemplateId);
+  if (!promptTemplate) {
+    return { success: false, responseId, error: `Prompt template not found: ${promptTemplateId}` };
+  }
+
+  const prompt = renderPrompt(promptTemplate.template, topic.name);
 
   const startTime = Date.now();
   let rawResponse = '';
@@ -74,7 +87,8 @@ export async function collectForTopic(
     model: model.model_name,
     topic_id: topicId,
     topic_name: topic.name,
-    topic_category: topic.category,
+    prompt_template_id: promptTemplateId,
+    prompt_template_name: promptTemplate.name,
     prompt,
     response: rawResponse || null,
     latency_ms: latencyMs,

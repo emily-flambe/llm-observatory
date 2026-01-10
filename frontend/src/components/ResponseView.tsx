@@ -1,21 +1,6 @@
 import { useState, useEffect } from 'react';
 import ResponseCard from './ResponseCard';
-
-interface Topic {
-  id: string;
-  name: string;
-  category: string;
-}
-
-interface Response {
-  id: string;
-  model: string;
-  company: string;
-  response: string | null;
-  collected_at: string;
-  latency_ms: number;
-  error: string | null;
-}
+import type { Topic, Response, ResponsesResponse } from '../types';
 
 interface ResponseViewProps {
   topic: Topic;
@@ -29,7 +14,7 @@ export default function ResponseView({ topic }: ResponseViewProps) {
     const controller = new AbortController();
 
     fetch(`/api/topics/${topic.id}/responses`, { signal: controller.signal })
-      .then(res => res.json() as Promise<{ responses: Response[] }>)
+      .then(res => res.json() as Promise<ResponsesResponse>)
       .then(data => {
         setResponses(data.responses);
         setLoadedTopicId(topic.id);
@@ -49,15 +34,15 @@ export default function ResponseView({ topic }: ResponseViewProps) {
   const loading = loadedTopicId !== topic.id;
 
   if (loading) {
-    return <div className="text-slate-400">Loading responses...</div>;
+    return <div className="text-ink-muted">Loading responses...</div>;
   }
 
   if (responses.length === 0) {
     return (
       <div className="text-center py-16">
-        <p className="text-slate-500">No responses collected yet for {topic.name}</p>
-        <p className="text-sm text-slate-600 mt-2">
-          Use the admin API to trigger collection
+        <p className="text-ink-muted">No responses collected yet for {topic.name}</p>
+        <p className="text-sm text-ink-muted mt-2">
+          Use the Collect tab to trigger collection
         </p>
       </div>
     );
@@ -72,13 +57,13 @@ export default function ResponseView({ topic }: ResponseViewProps) {
 
   return (
     <div>
-      <h2 className="text-xl font-semibold text-white mb-6">
+      <h2 className="text-xl font-semibold text-ink mb-6">
         Responses for {topic.name}
       </h2>
       <div className="space-y-6">
         {Object.entries(byModel).map(([modelName, modelResponses]) => (
           <div key={modelName}>
-            <h3 className="text-sm font-medium text-slate-400 mb-3">
+            <h3 className="text-sm font-medium text-ink-light mb-3">
               {modelName}
             </h3>
             <div className="space-y-4">

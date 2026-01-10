@@ -1,8 +1,10 @@
 -- Initial topics (minimal set for MVP)
-INSERT OR IGNORE INTO topics (id, name, category) VALUES
-  ('openai', 'OpenAI', 'company'),
-  ('anthropic', 'Anthropic', 'company'),
-  ('climate-change', 'Climate Change', 'concept');
+INSERT OR IGNORE INTO topics (id, name, description) VALUES
+  ('climate-change', 'Climate Change', 'Global warming and environmental policy');
+
+-- Initial prompt templates
+INSERT OR IGNORE INTO prompt_templates (id, name, template, description) VALUES
+  ('static', 'Static Opinion', 'Without doing any new research, what do you think about {topic}? Keep your response to less than 200 words.', 'Ask for opinion based on training data only');
 
 -- Initial models (four providers for MVP)
 INSERT OR IGNORE INTO models (id, provider, model_name, display_name) VALUES
