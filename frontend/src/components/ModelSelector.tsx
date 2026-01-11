@@ -30,6 +30,8 @@ export default function ModelSelector({
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedCompanies, setSelectedCompanies] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<SortOption>('released_at');
+  const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
+  const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false);
 
   // Get unique companies
   const allCompanies = useMemo(() => {
@@ -128,6 +130,18 @@ export default function ModelSelector({
     }
   };
 
+  const toggleCompanyExpanded = (company: string) => {
+    setExpandedCompanies((prev) => {
+      const next = new Set(prev);
+      if (next.has(company)) {
+        next.delete(company);
+      } else {
+        next.add(company);
+      }
+      return next;
+    });
+  };
+
   const totalSelected = selectedModels.size;
   const totalFiltered = filteredModels.length;
 
@@ -145,8 +159,11 @@ export default function ModelSelector({
         />
 
         {/* Company filter dropdown */}
-        <div className="relative group">
-          <button className="px-3 py-1.5 text-sm border border-border rounded-lg hover:border-ink-muted flex items-center gap-1">
+        <div className="relative">
+          <button
+            onClick={() => setCompanyDropdownOpen(!companyDropdownOpen)}
+            className="px-3 py-1.5 text-sm border border-border rounded-lg hover:border-ink-muted flex items-center gap-1"
+          >
             Companies
             {selectedCompanies.size > 0 && (
               <span className="bg-amber text-white text-xs px-1.5 rounded-full">
@@ -157,30 +174,38 @@ export default function ModelSelector({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>
-          <div className="absolute top-full left-0 mt-1 bg-white border border-border rounded-lg shadow-lg py-1 z-10 hidden group-hover:block min-w-[150px]">
-            {allCompanies.map((company) => (
-              <label
-                key={company}
-                className="flex items-center gap-2 px-3 py-1.5 hover:bg-paper-dark cursor-pointer text-sm"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedCompanies.has(company)}
-                  onChange={() => toggleCompanyFilter(company)}
-                  className="rounded border-border text-amber focus:ring-amber"
-                />
-                {company}
-              </label>
-            ))}
-            {selectedCompanies.size > 0 && (
-              <button
-                onClick={() => setSelectedCompanies(new Set())}
-                className="w-full text-left px-3 py-1.5 text-xs text-ink-muted hover:text-ink border-t border-border mt-1"
-              >
-                Clear filters
-              </button>
-            )}
-          </div>
+          {companyDropdownOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-10"
+                onClick={() => setCompanyDropdownOpen(false)}
+              />
+              <div className="absolute top-full left-0 mt-1 bg-white border border-border rounded-lg shadow-lg py-1 z-20 min-w-[150px]">
+                {allCompanies.map((company) => (
+                  <label
+                    key={company}
+                    className="flex items-center gap-2 px-3 py-1.5 hover:bg-paper-dark cursor-pointer text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedCompanies.has(company)}
+                      onChange={() => toggleCompanyFilter(company)}
+                      className="rounded border-border text-amber focus:ring-amber"
+                    />
+                    {company}
+                  </label>
+                ))}
+                {selectedCompanies.size > 0 && (
+                  <button
+                    onClick={() => setSelectedCompanies(new Set())}
+                    className="w-full text-left px-3 py-1.5 text-xs text-ink-muted hover:text-ink border-t border-border mt-1"
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Sort dropdown */}
@@ -218,18 +243,35 @@ export default function ModelSelector({
           const selectedCount = companyModels.filter((m) => selectedModels.has(m.id)).length;
           const allSelected = selectedCount === companyModels.length;
           const someSelected = selectedCount > 0 && selectedCount < companyModels.length;
+          const isExpanded = expandedCompanies.has(company);
 
           return (
             <div key={company} className="bg-white border border-border rounded-lg p-4">
-              {/* Company header with checkbox */}
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-medium text-ink">{company}</h3>
-                <label className="flex items-center gap-2 cursor-pointer">
+              {/* Company header - clickable to expand/collapse */}
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => toggleCompanyExpanded(company)}
+                  className="flex items-center gap-2 text-left flex-1"
+                >
+                  <svg
+                    className={`w-4 h-4 text-ink-muted transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                  <h3 className="font-medium text-ink">{company}</h3>
+                </button>
+                <div className="flex items-center gap-2">
                   <span className="text-xs text-ink-muted">
                     {selectedCount}/{companyModels.length}
                   </span>
                   <div
-                    onClick={() => toggleCompanySelection(company)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleCompanySelection(company);
+                    }}
                     className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer ${
                       allSelected
                         ? 'bg-amber border-amber'
@@ -248,64 +290,66 @@ export default function ModelSelector({
                       </svg>
                     )}
                   </div>
-                </label>
+                </div>
               </div>
 
-              {/* Model list */}
-              <ul className="space-y-1.5">
-                {companyModels.map((model) => (
-                  <li key={model.id}>
-                    <label
-                      className={`flex items-start gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
-                        selectedModels.has(model.id)
-                          ? 'bg-amber-bg'
-                          : 'hover:bg-paper-dark'
-                      }`}
-                    >
-                      <div
-                        className={`mt-0.5 w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center ${
-                          selectedModels.has(model.id) ? 'bg-amber border-amber' : 'border-border'
+              {/* Model list - only shown when expanded */}
+              {isExpanded && (
+                <ul className="space-y-1.5 mt-3">
+                  {companyModels.map((model) => (
+                    <li key={model.id}>
+                      <label
+                        className={`flex items-start gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
+                          selectedModels.has(model.id)
+                            ? 'bg-amber-bg'
+                            : 'hover:bg-paper-dark'
                         }`}
                       >
-                        {selectedModels.has(model.id) && (
-                          <svg
-                            className="w-3 h-3 text-white"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
-                          </svg>
-                        )}
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={selectedModels.has(model.id)}
-                        onChange={() => onToggleModel(model.id)}
-                        className="sr-only"
-                      />
-                      <div className="min-w-0">
-                        <div className="text-sm text-ink">{model.display_name}</div>
-                        <div className="text-xs text-ink-muted font-mono truncate">
-                          {model.model_name}
+                        <div
+                          className={`mt-0.5 w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center ${
+                            selectedModels.has(model.id) ? 'bg-amber border-amber' : 'border-border'
+                          }`}
+                        >
+                          {selectedModels.has(model.id) && (
+                            <svg
+                              className="w-3 h-3 text-white"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
+                            </svg>
+                          )}
                         </div>
-                        {(model.released_at || model.knowledge_cutoff) && (
-                          <div className="text-xs text-ink-muted mt-0.5">
-                            {model.released_at && (
-                              <span>Released: {formatDate(model.released_at)}</span>
-                            )}
-                            {model.released_at && model.knowledge_cutoff && (
-                              <span className="mx-1">·</span>
-                            )}
-                            {model.knowledge_cutoff && (
-                              <span>Trained: {formatDate(model.knowledge_cutoff)}</span>
-                            )}
+                        <input
+                          type="checkbox"
+                          checked={selectedModels.has(model.id)}
+                          onChange={() => onToggleModel(model.id)}
+                          className="sr-only"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-sm text-ink">{model.display_name}</div>
+                          <div className="text-xs text-ink-muted font-mono truncate">
+                            {model.model_name}
                           </div>
-                        )}
-                      </div>
-                    </label>
-                  </li>
-                ))}
-              </ul>
+                          {(model.released_at || model.knowledge_cutoff) && (
+                            <div className="text-xs text-ink-muted mt-0.5">
+                              {model.released_at && (
+                                <span>Released: {formatDate(model.released_at)}</span>
+                              )}
+                              {model.released_at && model.knowledge_cutoff && (
+                                <span className="mx-1">·</span>
+                              )}
+                              {model.knowledge_cutoff && (
+                                <span>Trained: {formatDate(model.knowledge_cutoff)}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           );
         })}

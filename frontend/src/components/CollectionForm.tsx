@@ -66,6 +66,25 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
         setTopics(topicsData.topics);
         setTemplates(templatesData.templates);
         setModels(modelsData.models);
+
+        // Auto-select the most recent model per company
+        const modelList = modelsData.models;
+        const byCompany = new Map<string, Model>();
+        for (const model of modelList) {
+          const existing = byCompany.get(model.company);
+          if (!existing) {
+            byCompany.set(model.company, model);
+          } else {
+            // Compare release dates - pick the newest
+            const existingDate = existing.released_at || '';
+            const modelDate = model.released_at || '';
+            if (modelDate > existingDate) {
+              byCompany.set(model.company, model);
+            }
+          }
+        }
+        setSelectedModelIds(new Set(Array.from(byCompany.values()).map(m => m.id)));
+
         setLoading(false);
       })
       .catch(err => {

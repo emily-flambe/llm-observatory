@@ -18,6 +18,8 @@ export default function Landing() {
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedCompanies, setSelectedCompanies] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<SortOption>('released_at');
+  const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
+  const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false);
 
   useEffect(() => {
     fetch('/api/models')
@@ -96,6 +98,18 @@ export default function Landing() {
 
   const toggleCompanyFilter = (company: string) => {
     setSelectedCompanies((prev) => {
+      const next = new Set(prev);
+      if (next.has(company)) {
+        next.delete(company);
+      } else {
+        next.add(company);
+      }
+      return next;
+    });
+  };
+
+  const toggleCompanyExpanded = (company: string) => {
+    setExpandedCompanies((prev) => {
       const next = new Set(prev);
       if (next.has(company)) {
         next.delete(company);
@@ -202,8 +216,11 @@ export default function Landing() {
           />
 
           {/* Company filter dropdown */}
-          <div className="relative group">
-            <button className="px-3 py-1.5 text-sm border border-border rounded-lg hover:border-ink-muted flex items-center gap-1">
+          <div className="relative">
+            <button
+              onClick={() => setCompanyDropdownOpen(!companyDropdownOpen)}
+              className="px-3 py-1.5 text-sm border border-border rounded-lg hover:border-ink-muted flex items-center gap-1"
+            >
               Companies
               {selectedCompanies.size > 0 && (
                 <span className="bg-amber text-white text-xs px-1.5 rounded-full">
@@ -214,30 +231,38 @@ export default function Landing() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-            <div className="absolute top-full left-0 mt-1 bg-white border border-border rounded-lg shadow-lg py-1 z-10 hidden group-hover:block min-w-[150px]">
-              {allCompanies.map((company) => (
-                <label
-                  key={company}
-                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-paper-dark cursor-pointer text-sm"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedCompanies.has(company)}
-                    onChange={() => toggleCompanyFilter(company)}
-                    className="rounded border-border text-amber focus:ring-amber"
-                  />
-                  {company}
-                </label>
-              ))}
-              {selectedCompanies.size > 0 && (
-                <button
-                  onClick={() => setSelectedCompanies(new Set())}
-                  className="w-full text-left px-3 py-1.5 text-xs text-ink-muted hover:text-ink border-t border-border mt-1"
-                >
-                  Clear filters
-                </button>
-              )}
-            </div>
+            {companyDropdownOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setCompanyDropdownOpen(false)}
+                />
+                <div className="absolute top-full left-0 mt-1 bg-white border border-border rounded-lg shadow-lg py-1 z-20 min-w-[150px]">
+                  {allCompanies.map((company) => (
+                    <label
+                      key={company}
+                      className="flex items-center gap-2 px-3 py-1.5 hover:bg-paper-dark cursor-pointer text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedCompanies.has(company)}
+                        onChange={() => toggleCompanyFilter(company)}
+                        className="rounded border-border text-amber focus:ring-amber"
+                      />
+                      {company}
+                    </label>
+                  ))}
+                  {selectedCompanies.size > 0 && (
+                    <button
+                      onClick={() => setSelectedCompanies(new Set())}
+                      className="w-full text-left px-3 py-1.5 text-xs text-ink-muted hover:text-ink border-t border-border mt-1"
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Sort dropdown */}
@@ -260,44 +285,64 @@ export default function Landing() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {sortedCompanies.map((company) => {
             const companyModels = modelsByCompany.get(company) || [];
+            const isExpanded = expandedCompanies.has(company);
             return (
             <div key={company} className="bg-white border border-border rounded-lg p-4">
-              <h3 className="font-medium text-ink mb-2">{company}</h3>
-              <ul className="space-y-2">
-                {companyModels.map((model) => {
-                  const url = getModelUrl(model);
-                  return (
-                    <li key={model.id}>
-                      <div className="text-sm text-ink">{model.display_name}</div>
-                      {url !== '#' ? (
-                        <a
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-amber hover:text-amber-light font-mono"
-                        >
-                          {model.model_name}
-                        </a>
-                      ) : (
-                        <div className="text-xs text-ink-muted font-mono">{model.model_name}</div>
-                      )}
-                      {(model.released_at || model.knowledge_cutoff) && (
-                        <div className="text-xs text-ink-muted mt-0.5">
-                          {model.released_at && (
-                            <span>Released: {formatDate(model.released_at)}</span>
-                          )}
-                          {model.released_at && model.knowledge_cutoff && (
-                            <span className="mx-1">·</span>
-                          )}
-                          {model.knowledge_cutoff && (
-                            <span>Trained: {formatDate(model.knowledge_cutoff)}</span>
-                          )}
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
+              {/* Company header - clickable to expand/collapse */}
+              <button
+                onClick={() => toggleCompanyExpanded(company)}
+                className="flex items-center gap-2 text-left w-full"
+              >
+                <svg
+                  className={`w-4 h-4 text-ink-muted transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                <h3 className="font-medium text-ink">{company}</h3>
+                <span className="text-xs text-ink-muted ml-auto">{companyModels.length}</span>
+              </button>
+
+              {/* Model list - only shown when expanded */}
+              {isExpanded && (
+                <ul className="space-y-2 mt-3">
+                  {companyModels.map((model) => {
+                    const url = getModelUrl(model);
+                    return (
+                      <li key={model.id}>
+                        <div className="text-sm text-ink">{model.display_name}</div>
+                        {url !== '#' ? (
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-amber hover:text-amber-light font-mono"
+                          >
+                            {model.model_name}
+                          </a>
+                        ) : (
+                          <div className="text-xs text-ink-muted font-mono">{model.model_name}</div>
+                        )}
+                        {(model.released_at || model.knowledge_cutoff) && (
+                          <div className="text-xs text-ink-muted mt-0.5">
+                            {model.released_at && (
+                              <span>Released: {formatDate(model.released_at)}</span>
+                            )}
+                            {model.released_at && model.knowledge_cutoff && (
+                              <span className="mx-1">·</span>
+                            )}
+                            {model.knowledge_cutoff && (
+                              <span>Trained: {formatDate(model.knowledge_cutoff)}</span>
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
             );
           })}

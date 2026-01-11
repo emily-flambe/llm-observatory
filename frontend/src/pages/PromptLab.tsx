@@ -27,8 +27,25 @@ export default function PromptLab() {
     fetch('/api/models')
       .then((r) => r.json() as Promise<{ models: Model[] }>)
       .then((data) => {
-        setModels(data.models || []);
-        setSelectedModels(new Set((data.models || []).map((m) => m.id)));
+        const modelList = data.models || [];
+        setModels(modelList);
+
+        // Auto-select the most recent model per company
+        const byCompany = new Map<string, Model>();
+        for (const model of modelList) {
+          const existing = byCompany.get(model.company);
+          if (!existing) {
+            byCompany.set(model.company, model);
+          } else {
+            // Compare release dates - pick the newest
+            const existingDate = existing.released_at || '';
+            const modelDate = model.released_at || '';
+            if (modelDate > existingDate) {
+              byCompany.set(model.company, model);
+            }
+          }
+        }
+        setSelectedModels(new Set(Array.from(byCompany.values()).map(m => m.id)));
       });
   }, []);
 
