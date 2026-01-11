@@ -179,6 +179,10 @@ interface LLMResponse {
 }
 
 async function callOpenAI(prompt: string, model: string, apiKey: string): Promise<LLMResponse> {
+  // Newer models (o1, o3, gpt-5+) use max_completion_tokens instead of max_tokens
+  const usesCompletionTokens =
+    model.startsWith('o1') || model.startsWith('o3') || model.startsWith('gpt-5');
+
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -188,7 +192,7 @@ async function callOpenAI(prompt: string, model: string, apiKey: string): Promis
     body: JSON.stringify({
       model,
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 1024,
+      ...(usesCompletionTokens ? { max_completion_tokens: 1024 } : { max_tokens: 1024 }),
     }),
   });
 
