@@ -18,9 +18,325 @@ import { parseBigQueryTimestamp } from './utils/date';
 import { renderMarkdown } from './utils/markdown';
 import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection, CollectionsResponse } from './types';
 
-function CollectPage({ onCollectionComplete }: { onCollectionComplete: () => void }) {
-  const { id } = useParams<{ id?: string }>();
-  return <CollectionForm onCollectionComplete={onCollectionComplete} editId={id} />;
+function CollectNavTabs() {
+  return (
+    <div className="flex gap-1 mb-6 border-b border-border">
+      <NavLink
+        to="/collect/create"
+        className={({ isActive }) =>
+          `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
+            isActive ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
+          }`
+        }
+      >
+        Create
+      </NavLink>
+      <NavLink
+        to="/collect/manage"
+        end={false}
+        className={({ isActive }) => {
+          // Also highlight for /collect/edit/* routes
+          const isEditRoute = window.location.pathname.startsWith('/collect/edit');
+          return `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
+            isActive || isEditRoute ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
+          }`;
+        }}
+      >
+        Manage
+      </NavLink>
+    </div>
+  );
+}
+
+function CollectCreatePage({ onCollectionComplete }: { onCollectionComplete: () => void }) {
+  return (
+    <div>
+      <CollectNavTabs />
+      <CollectionForm onCollectionComplete={onCollectionComplete} />
+    </div>
+  );
+}
+
+function CollectEditPage({ onCollectionComplete }: { onCollectionComplete: () => void }) {
+  const { id } = useParams<{ id: string }>();
+  return (
+    <div>
+      <CollectNavTabs />
+      <CollectionForm onCollectionComplete={onCollectionComplete} editId={id} />
+    </div>
+  );
+}
+
+function ManageCollectionCard({
+  collection,
+  onRunNow,
+  onTogglePause,
+  onDelete,
+  isRunning,
+}: {
+  collection: Collection;
+  onRunNow: (id: string) => void;
+  onTogglePause: (id: string, pause: boolean) => void;
+  onDelete: (id: string) => void;
+  isRunning: boolean;
+}) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const lastRunDate = collection.last_run_at ? parseBigQueryTimestamp(collection.last_run_at) : null;
+  const displayName = collection.display_name || `${collection.topic_name} - ${collection.template_name}`;
+
+  let status: { label: string; color: string; icon: string };
+  if (!collection.schedule_type) {
+    status = { label: 'Manual', color: 'text-ink-muted', icon: '○' };
+  } else if (collection.is_paused) {
+    status = { label: 'Paused', color: 'text-amber', icon: '⏸' };
+  } else {
+    status = { label: 'Active', color: 'text-green-600', icon: '●' };
+  }
+
+  const formatSchedule = () => {
+    if (!collection.schedule_type) return 'No schedule';
+    if (collection.schedule_type === 'custom') return collection.cron_expression || 'Custom';
+    return collection.schedule_type.charAt(0).toUpperCase() + collection.schedule_type.slice(1);
+  };
+
+  return (
+    <div className="bg-white border border-border rounded-lg p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="font-medium text-ink truncate">{displayName}</h3>
+            <span className={`text-xs ${status.color}`}>
+              {status.icon} {status.label}
+            </span>
+          </div>
+          <p className="text-sm text-ink-muted mt-1 line-clamp-2">{collection.prompt_text}</p>
+          <div className="mt-2 flex items-center gap-3 text-xs text-ink-muted">
+            <span>{collection.model_count} model{collection.model_count !== 1 ? 's' : ''}</span>
+            <span>·</span>
+            <span>{formatSchedule()}</span>
+            {lastRunDate && (
+              <>
+                <span>·</span>
+                <span>Last run: {lastRunDate.toLocaleDateString()} {lastRunDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => onRunNow(collection.id)}
+            disabled={isRunning}
+            className="px-2 py-1 text-xs bg-amber text-white rounded hover:bg-amber-dark disabled:opacity-50"
+          >
+            {isRunning ? 'Running...' : 'Run Now'}
+          </button>
+          {collection.schedule_type && (
+            <button
+              onClick={() => onTogglePause(collection.id, !collection.is_paused)}
+              className="px-2 py-1 text-xs border border-border rounded hover:bg-paper-dark"
+            >
+              {collection.is_paused ? 'Resume' : 'Pause'}
+            </button>
+          )}
+          <Link
+            to={`/collect/edit/${collection.id}`}
+            className="px-2 py-1 text-xs border border-border rounded hover:bg-paper-dark"
+          >
+            Edit
+          </Link>
+          {!showDeleteConfirm ? (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-2 py-1 text-xs text-error border border-error/30 rounded hover:bg-red-50"
+            >
+              Delete
+            </button>
+          ) : (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => {
+                  onDelete(collection.id);
+                  setShowDeleteConfirm(false);
+                }}
+                className="px-2 py-1 text-xs bg-error text-white rounded"
+              >
+                Confirm
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-2 py-1 text-xs border border-border rounded"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CollectManagePage() {
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState('');
+  const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const loadCollections = () => {
+    fetch('/api/collections')
+      .then(async (res) => {
+        const data = (await res.json()) as { error?: string } & CollectionsResponse;
+        if (!res.ok) throw new Error(data.error || 'Failed to load collections');
+        return data;
+      })
+      .then((data) => {
+        setCollections(data.collections || []);
+        setError(null);
+      })
+      .catch((err: Error) => {
+        setError(err.message);
+        setCollections([]);
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadCollections();
+  }, []);
+
+  const handleRunNow = async (id: string) => {
+    if (!apiKey) {
+      setActionError('Please enter an API key to run collections');
+      return;
+    }
+    setActionError(null);
+    setRunningIds((prev) => new Set(prev).add(id));
+
+    try {
+      const res = await fetch(`/api/admin/collections/${id}/run`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        throw new Error(data.error || 'Failed to run collection');
+      }
+      loadCollections(); // Refresh to get updated last_run_at
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to run collection');
+    } finally {
+      setRunningIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  const handleTogglePause = async (id: string, pause: boolean) => {
+    if (!apiKey) {
+      setActionError('Please enter an API key to modify collections');
+      return;
+    }
+    setActionError(null);
+
+    try {
+      const res = await fetch(`/api/collections/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ is_paused: pause }),
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        throw new Error(data.error || 'Failed to update collection');
+      }
+      loadCollections();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to update collection');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!apiKey) {
+      setActionError('Please enter an API key to delete collections');
+      return;
+    }
+    setActionError(null);
+
+    try {
+      const res = await fetch(`/api/collections/${id}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        throw new Error(data.error || 'Failed to delete collection');
+      }
+      loadCollections();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to delete collection');
+    }
+  };
+
+  return (
+    <div>
+      <CollectNavTabs />
+
+      {/* API Key input for actions */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-ink mb-1">API Key (for actions)</label>
+        <input
+          type="password"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder="Enter admin API key to run, pause, or delete"
+          className="w-full max-w-md rounded-lg px-3 py-2 text-sm border border-border focus:border-amber focus:ring-1 focus:ring-amber"
+        />
+      </div>
+
+      {actionError && (
+        <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-error text-sm">
+          {actionError}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="text-center py-20 text-ink-muted">Loading collections...</div>
+      ) : error ? (
+        <div className="text-center py-20">
+          <div className="text-error mb-2">Failed to load collections</div>
+          <div className="text-sm text-ink-muted">{error}</div>
+        </div>
+      ) : collections.length === 0 ? (
+        <div className="text-center py-20 text-ink-muted">
+          No collections yet. Use the Create tab to create your first collection.
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {collections.map((collection) => (
+            <ManageCollectionCard
+              key={collection.id}
+              collection={collection}
+              onRunNow={handleRunNow}
+              onTogglePause={handleTogglePause}
+              onDelete={handleDelete}
+              isRunning={runningIds.has(collection.id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function PromptCard({ query }: { query: PromptLabQuery }) {
