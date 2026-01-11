@@ -173,12 +173,12 @@ function PromptHistoryContent({
   const [error, setError] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState(filters.search);
 
-  // Derive unique companies from models
-  const companies = [...new Set(models.map((m) => m.provider))].sort();
+  // Derive unique companies from models (actual creators, not hosting providers)
+  const companies = [...new Set(models.map((m) => m.company))].sort();
 
   // Filter models by selected company
   const filteredModels = filters.company
-    ? models.filter((m) => m.provider === filters.company)
+    ? models.filter((m) => m.company === filters.company)
     : models;
 
   // Load prompts when filters change (component is keyed so loading starts as true)

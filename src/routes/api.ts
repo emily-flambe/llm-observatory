@@ -169,7 +169,12 @@ api.post('/prompt-templates', async (c) => {
 // List all models
 api.get('/models', async (c) => {
   const models = await getModels(c.env.DB);
-  return c.json({ models });
+  // Add computed company field (actual creator, not hosting provider)
+  const modelsWithCompany = models.map((m) => ({
+    ...m,
+    company: extractCompany(m.provider, m.model_name),
+  }));
+  return c.json({ models: modelsWithCompany });
 });
 
 // ==================== Collection (Protected by Cloudflare Access) ====================

@@ -18,6 +18,7 @@ export interface Model {
   provider: string;
   model_name: string;
   display_name: string;
+  company: string; // Actual creator (e.g., "Meta" not "cloudflare")
 }
 
 export interface Response {
