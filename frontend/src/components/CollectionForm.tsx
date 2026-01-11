@@ -13,6 +13,17 @@ interface CollectionFormProps {
   onCollectionComplete?: () => void;
 }
 
+function HelpIcon({ text }: { text: string }) {
+  return (
+    <span
+      title={text}
+      className="inline-flex items-center justify-center w-4 h-4 ml-1 text-xs text-ink-muted bg-paper-dark border border-border rounded-full cursor-help"
+    >
+      ?
+    </span>
+  );
+}
+
 export default function CollectionForm({ onCollectionComplete }: CollectionFormProps) {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
@@ -322,27 +333,45 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
             </div>
           ) : (
             <div className="bg-paper-dark border border-border rounded-lg p-4 space-y-3">
-              <input
-                type="text"
-                placeholder="ID"
-                value={customTemplate.id}
-                onChange={e => setCustomTemplate({ ...customTemplate, id: e.target.value })}
-                className="w-full rounded-lg px-3 py-2 text-sm"
-              />
-              <input
-                type="text"
-                placeholder="Name"
-                value={customTemplate.name}
-                onChange={e => setCustomTemplate({ ...customTemplate, name: e.target.value })}
-                className="w-full rounded-lg px-3 py-2 text-sm"
-              />
-              <textarea
-                placeholder="Template (use {topic} placeholder)"
-                value={customTemplate.template}
-                onChange={e => setCustomTemplate({ ...customTemplate, template: e.target.value })}
-                rows={2}
-                className="w-full rounded-lg px-3 py-2 text-sm"
-              />
+              <div>
+                <label className="text-xs font-medium text-ink-light flex items-center mb-1">
+                  ID
+                  <HelpIcon text="Unique slug for this template (e.g., 'opinion-brief'). Used internally to reference the template." />
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g., opinion-brief"
+                  value={customTemplate.id}
+                  onChange={e => setCustomTemplate({ ...customTemplate, id: e.target.value })}
+                  className="w-full rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-ink-light flex items-center mb-1">
+                  Name
+                  <HelpIcon text="Display name shown in the dropdown (e.g., 'Brief Opinion'). Can be different from ID." />
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g., Brief Opinion"
+                  value={customTemplate.name}
+                  onChange={e => setCustomTemplate({ ...customTemplate, name: e.target.value })}
+                  className="w-full rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-ink-light flex items-center mb-1">
+                  Template
+                  <HelpIcon text="The prompt text sent to LLMs. Use {topic} as a placeholder - it will be replaced with the selected topic's name (e.g., 'Climate Change')." />
+                </label>
+                <textarea
+                  placeholder="e.g., What is your opinion on {topic}?"
+                  value={customTemplate.template}
+                  onChange={e => setCustomTemplate({ ...customTemplate, template: e.target.value })}
+                  rows={2}
+                  className="w-full rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
               <input
                 type="text"
                 placeholder="Description (optional)"
