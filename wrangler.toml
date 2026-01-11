@@ -45,6 +45,7 @@ BQ_TABLE_ID = "raw_responses"
 # OPENAI_API_KEY
 # ANTHROPIC_API_KEY
 # GOOGLE_API_KEY
+# XAI_API_KEY
 # BQ_SERVICE_ACCOUNT_EMAIL
 # BQ_PRIVATE_KEY
 # CF_ACCESS_TEAM_DOMAIN (e.g., https://your-team.cloudflareaccess.com)

@@ -94,6 +94,11 @@ export async function collectForTopic(
       rawResponse = result.content;
       inputTokens = result.inputTokens;
       outputTokens = result.outputTokens;
+    } else if (model.provider === 'xai') {
+      const result = await callXAI(prompt, model.model_name, env.XAI_API_KEY);
+      rawResponse = result.content;
+      inputTokens = result.inputTokens;
+      outputTokens = result.outputTokens;
     } else {
       throw new Error(`Unknown provider: ${model.provider}`);
     }
@@ -272,5 +277,37 @@ async function callCloudflare(prompt: string, model: string, ai: Ai): Promise<LL
     content,
     inputTokens: null, // Cloudflare AI doesn't return token counts
     outputTokens: null,
+  };
+}
+
+async function callXAI(prompt: string, model: string, apiKey: string): Promise<LLMResponse> {
+  // xAI API is OpenAI-compatible
+  const response = await fetch('https://api.x.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 1024,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`xAI API error: ${response.status} ${text}`);
+  }
+
+  const data = (await response.json()) as {
+    choices: Array<{ message: { content: string } }>;
+    usage?: { prompt_tokens: number; completion_tokens: number };
+  };
+
+  return {
+    content: data.choices[0]?.message?.content ?? '',
+    inputTokens: data.usage?.prompt_tokens ?? null,
+    outputTokens: data.usage?.completion_tokens ?? null,
   };
 }

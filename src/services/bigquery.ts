@@ -119,6 +119,7 @@ export function extractCompany(provider: string, modelName: string): string {
     anthropic: 'Anthropic',
     google: 'Google',
     cloudflare: 'Cloudflare',
+    xai: 'xAI',
   };
 
   return providerMap[provider.toLowerCase()] ?? provider;

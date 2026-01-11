@@ -15,6 +15,11 @@ describe('extractCompany', () => {
       expect(extractCompany('google', 'gemini-2.0-flash')).toBe('Google');
     });
 
+    it('returns xAI for xai provider', () => {
+      expect(extractCompany('xai', 'grok-3')).toBe('xAI');
+      expect(extractCompany('xai', 'grok-3-mini')).toBe('xAI');
+    });
+
     it('handles case-insensitive provider names', () => {
       expect(extractCompany('OpenAI', 'gpt-4o')).toBe('OpenAI');
       expect(extractCompany('ANTHROPIC', 'claude-sonnet')).toBe('Anthropic');
@@ -83,6 +88,11 @@ describe('extractProductFamily', () => {
 
     it('extracts gemini from Gemini models', () => {
       expect(extractProductFamily('gemini-2.0-flash')).toBe('gemini');
+    });
+
+    it('extracts grok from Grok models', () => {
+      expect(extractProductFamily('grok-3')).toBe('grok');
+      expect(extractProductFamily('grok-3-mini')).toBe('grok');
     });
   });
 
