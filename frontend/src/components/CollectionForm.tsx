@@ -19,6 +19,7 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [apiKey, setApiKey] = useState('');
   const [selectedTopicId, setSelectedTopicId] = useState<string>('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
@@ -125,7 +126,7 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
   };
 
   const handleSubmit = async () => {
-    if (!selectedTopicId || !selectedTemplateId || selectedModelIds.size === 0) return;
+    if (!apiKey || !selectedTopicId || !selectedTemplateId || selectedModelIds.size === 0) return;
     setSubmitting(true);
     setError(null);
     setResults(null);
@@ -155,7 +156,10 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
       try {
         const res = await fetch('/api/admin/collect', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
           body: JSON.stringify({
             topicId: selectedTopicId,
             topicName: topic?.name,
@@ -220,6 +224,18 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
             {error}
           </div>
         )}
+
+        {/* API Key */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-ink">API Key</label>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={e => setApiKey(e.target.value)}
+            placeholder="Enter admin API key"
+            className="w-full rounded-lg px-3 py-2.5 border border-border focus:border-amber focus:ring-1 focus:ring-amber"
+          />
+        </div>
 
         {/* Topic */}
         <div className="space-y-2">
@@ -428,7 +444,7 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
       <div className="px-6 py-4 bg-paper-dark border-t border-border">
         <button
           onClick={handleSubmit}
-          disabled={submitting || !selectedTopicId || !selectedTemplateId || selectedModelIds.size === 0}
+          disabled={submitting || !apiKey || !selectedTopicId || !selectedTemplateId || selectedModelIds.size === 0}
           className="w-full btn-primary py-3 rounded-lg font-medium disabled:opacity-50"
         >
           {submitting ? 'Collecting...' : `Collect from ${selectedModelIds.size} model${selectedModelIds.size !== 1 ? 's' : ''}`}
