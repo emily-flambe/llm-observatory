@@ -8,6 +8,7 @@ import {
   getModelSyncLogs,
 } from '../services/storage';
 import { syncAllProviders } from '../services/model-sync';
+import { syncBasellmMetadata } from '../services/basellm';
 import { collectForTopic } from '../services/collector';
 import { createLLMProvider } from '../services/llm';
 import { getModel } from '../services/storage';
@@ -247,6 +248,12 @@ admin.get('/test-models', async (c) => {
 admin.post('/sync-models', async (c) => {
   const results = await syncAllProviders(c.env);
   return c.json({ results });
+});
+
+// Trigger basellm metadata sync (release dates, knowledge cutoff)
+admin.post('/sync-basellm', async (c) => {
+  const result = await syncBasellmMetadata(c.env);
+  return c.json({ result });
 });
 
 // Get recent sync logs

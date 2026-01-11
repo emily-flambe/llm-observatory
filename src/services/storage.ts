@@ -30,6 +30,7 @@ export interface Model {
   source: 'auto' | 'manual';
   last_synced: string | null;
   released_at: string | null;
+  knowledge_cutoff: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -205,6 +206,44 @@ export async function upsertAutoModel(
     )
     .run();
   return { action: 'inserted' };
+}
+
+// Update model metadata from external source (basellm)
+export async function updateModelMetadata(
+  db: D1Database,
+  modelName: string,
+  metadata: {
+    released_at?: string | null;
+    knowledge_cutoff?: string | null;
+  }
+): Promise<{ updated: boolean }> {
+  const now = new Date().toISOString();
+
+  // Find model by model_name (could match multiple providers)
+  const result = await db
+    .prepare('SELECT id FROM models WHERE model_name = ?')
+    .bind(modelName)
+    .all<{ id: string }>();
+
+  if (result.results.length === 0) {
+    return { updated: false };
+  }
+
+  // Update all matching models
+  for (const model of result.results) {
+    await db
+      .prepare(
+        `UPDATE models SET
+         released_at = COALESCE(?, released_at),
+         knowledge_cutoff = COALESCE(?, knowledge_cutoff),
+         updated_at = ?
+         WHERE id = ?`
+      )
+      .bind(metadata.released_at ?? null, metadata.knowledge_cutoff ?? null, now, model.id)
+      .run();
+  }
+
+  return { updated: true };
 }
 
 export async function logModelSync(

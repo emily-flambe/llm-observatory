@@ -22,6 +22,7 @@ export interface Model {
   model_type: string;
   source: 'auto' | 'manual';
   released_at: string | null;
+  knowledge_cutoff: string | null;
 }
 
 export interface Response {
