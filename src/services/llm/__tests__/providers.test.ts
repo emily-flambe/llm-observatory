@@ -75,6 +75,56 @@ describe('OpenAIProvider', () => {
 
     await expect(provider.complete({ prompt: 'Test' })).rejects.toThrow(LLMError);
   });
+
+  it('uses max_tokens for older models like gpt-4o', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: 'Response' } }],
+        usage: { prompt_tokens: 10, completion_tokens: 5 },
+      }),
+    });
+
+    await provider.complete({ prompt: 'Test' });
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.max_tokens).toBeDefined();
+    expect(body.max_completion_tokens).toBeUndefined();
+  });
+
+  it('uses max_completion_tokens for gpt-5 models', async () => {
+    const gpt5Provider = new OpenAIProvider('test-gpt5', 'gpt-5.2', 'test-api-key');
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: 'Response' } }],
+        usage: { prompt_tokens: 10, completion_tokens: 5 },
+      }),
+    });
+
+    await gpt5Provider.complete({ prompt: 'Test' });
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.max_completion_tokens).toBeDefined();
+    expect(body.max_tokens).toBeUndefined();
+  });
+
+  it('uses max_completion_tokens for o1 models', async () => {
+    const o1Provider = new OpenAIProvider('test-o1', 'o1-preview', 'test-api-key');
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: 'Response' } }],
+        usage: { prompt_tokens: 10, completion_tokens: 5 },
+      }),
+    });
+
+    await o1Provider.complete({ prompt: 'Test' });
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.max_completion_tokens).toBeDefined();
+    expect(body.max_tokens).toBeUndefined();
+  });
 });
 
 describe('AnthropicProvider', () => {
