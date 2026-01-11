@@ -67,11 +67,13 @@ export default function ResponseCard({ response }: ResponseCardProps) {
 
       <div className="flex items-center gap-4 mt-4 pt-3 border-t border-border text-xs text-ink-muted">
         <span>{formatDate(response.collected_at)}</span>
-        {response.latency_ms > 0 && (
-          <span>{(response.latency_ms / 1000).toFixed(1)}s</span>
-        )}
         {response.input_tokens > 0 && (
           <span>{response.input_tokens + response.output_tokens} tokens</span>
+        )}
+        {(response.input_cost !== null || response.output_cost !== null) && (
+          <span className="text-green-600">
+            ${((response.input_cost || 0) + (response.output_cost || 0)).toFixed(6)}
+          </span>
         )}
       </div>
     </div>

@@ -483,6 +483,16 @@ admin.post('/prompt', async (c) => {
       });
     }
 
+    // Calculate costs based on model pricing
+    let inputCost: number | null = null;
+    let outputCost: number | null = null;
+    if (model.input_price_per_m !== null && inputTokens > 0) {
+      inputCost = (inputTokens / 1_000_000) * model.input_price_per_m;
+    }
+    if (model.output_price_per_m !== null && outputTokens > 0) {
+      outputCost = (outputTokens / 1_000_000) * model.output_price_per_m;
+    }
+
     // Save to BigQuery (fire and forget - don't block on this)
     const bqRow: BigQueryRow = {
       id: responseId,
@@ -502,6 +512,8 @@ admin.post('/prompt', async (c) => {
       latency_ms: latencyMs,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
+      input_cost: inputCost,
+      output_cost: outputCost,
       error: errorMsg,
       success: !errorMsg,
     };
