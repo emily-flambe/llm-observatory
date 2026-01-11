@@ -20,6 +20,8 @@ export default function PromptLab() {
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
   const [prompt, setPrompt] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [wordLimitEnabled, setWordLimitEnabled] = useState(true);
+  const [wordLimit, setWordLimit] = useState(50);
   const [results, setResults] = useState<Map<string, ModelResult>>(new Map());
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -99,6 +101,11 @@ export default function PromptLab() {
       });
 
       try {
+        let finalPrompt = prompt.trim();
+        if (wordLimitEnabled) {
+          finalPrompt += `\n\nLimit your response to ${wordLimit} words.`;
+        }
+
         const response = await fetch('/api/admin/prompt', {
           method: 'POST',
           headers: {
@@ -106,7 +113,7 @@ export default function PromptLab() {
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            prompt: prompt.trim(),
+            prompt: finalPrompt,
             modelIds: [model.id],
             promptId, // Share same ID across all requests for grouping
           }),
@@ -184,6 +191,36 @@ export default function PromptLab() {
               rows={4}
               className="w-full px-3 py-2 rounded-lg text-sm resize-none"
             />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="wordLimitEnabled"
+              checked={wordLimitEnabled}
+              onChange={(e) => setWordLimitEnabled(e.target.checked)}
+              className="rounded"
+            />
+            <label htmlFor="wordLimitEnabled" className="text-sm text-ink-light">
+              Limit response to
+            </label>
+            <input
+              type="number"
+              value={wordLimit}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val) && val >= 1) setWordLimit(val);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'e' || e.key === 'E' || e.key === '+' || e.key === '-') {
+                  e.preventDefault();
+                }
+              }}
+              min={1}
+              disabled={!wordLimitEnabled}
+              className="w-20 px-2 py-1 rounded text-sm text-center disabled:opacity-50"
+            />
+            <span className="text-sm text-ink-light">words</span>
           </div>
 
           <div>
