@@ -713,7 +713,7 @@ export async function getRecentPrompts(
         success
       )) as responses
     FROM \`${env.BQ_PROJECT_ID}.${env.BQ_DATASET_ID}.${env.BQ_TABLE_ID}\`
-    WHERE 1=1
+    WHERE success = TRUE
   `;
 
   const queryParameters: Array<{
