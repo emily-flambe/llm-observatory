@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS models (
     last_synced TEXT,                     -- ISO timestamp of last sync
     released_at TEXT,                     -- ISO timestamp of model release (from basellm)
     knowledge_cutoff TEXT,                -- Training data cutoff date (from basellm, e.g. "2024-04")
+    input_price_per_m REAL,               -- Cost per million input tokens (USD)
+    output_price_per_m REAL,              -- Cost per million output tokens (USD)
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );

@@ -59,6 +59,17 @@ interface XAIModelsResponse {
   data: XAIModel[];
 }
 
+// DeepSeek API response types (OpenAI-compatible)
+interface DeepSeekModel {
+  id: string;
+  object: string;
+  owned_by: string;
+}
+
+interface DeepSeekModelsResponse {
+  data: DeepSeekModel[];
+}
+
 // Generate stable model ID from provider and model name
 function generateModelId(provider: string, modelName: string): string {
   // Sanitize model name for ID: lowercase, replace special chars
@@ -138,6 +149,13 @@ function isGoogleChatModel(model: GoogleModel): boolean {
 function isXAIChatModel(model: XAIModel): boolean {
   const id = model.id.toLowerCase();
   return id.includes('grok');
+}
+
+// Filter for DeepSeek chat models
+function isDeepSeekChatModel(model: DeepSeekModel): boolean {
+  const id = model.id.toLowerCase();
+  // Include chat and reasoner models
+  return id.includes('deepseek-chat') || id.includes('deepseek-reasoner');
 }
 
 // Convert Unix timestamp to ISO string
@@ -353,6 +371,60 @@ async function syncXAIModels(env: Env): Promise<ModelSyncResult> {
   }
 }
 
+// Sync DeepSeek models
+async function syncDeepSeekModels(env: Env): Promise<ModelSyncResult> {
+  const provider = 'deepseek';
+
+  try {
+    const response = await fetch('https://api.deepseek.com/models', {
+      headers: {
+        Authorization: `Bearer ${env.DEEPSEEK_API_KEY}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`DeepSeek API error: ${response.status}`);
+    }
+
+    const data = (await response.json()) as DeepSeekModelsResponse;
+    const chatModels = data.data.filter(isDeepSeekChatModel);
+
+    let modelsAdded = 0;
+    for (const model of chatModels) {
+      // Generate display name: deepseek-reasoner -> DeepSeek R1, deepseek-chat -> DeepSeek Chat
+      const displayName =
+        model.id === 'deepseek-reasoner' ? 'DeepSeek R1' : generateDisplayName(model.id);
+      const result = await upsertAutoModel(env.DB, {
+        id: generateModelId(provider, model.id),
+        provider,
+        model_name: model.id,
+        display_name: displayName,
+        model_type: 'chat',
+      });
+      if (result.action === 'inserted') modelsAdded++;
+    }
+
+    await logModelSync(env.DB, {
+      id: crypto.randomUUID(),
+      provider,
+      models_found: chatModels.length,
+      models_added: modelsAdded,
+    });
+
+    return { provider, modelsFound: chatModels.length, modelsAdded };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    await logModelSync(env.DB, {
+      id: crypto.randomUUID(),
+      provider,
+      models_found: 0,
+      models_added: 0,
+      error: errorMsg,
+    });
+    return { provider, modelsFound: 0, modelsAdded: 0, error: errorMsg };
+  }
+}
+
 // Sync all providers
 export async function syncAllProviders(env: Env): Promise<ModelSyncResult[]> {
   const results = await Promise.allSettled([
@@ -360,10 +432,11 @@ export async function syncAllProviders(env: Env): Promise<ModelSyncResult[]> {
     syncAnthropicModels(env),
     syncGoogleModels(env),
     syncXAIModels(env),
+    syncDeepSeekModels(env),
   ]);
 
   return results.map((result, index) => {
-    const providers = ['openai', 'anthropic', 'google', 'xai'];
+    const providers = ['openai', 'anthropic', 'google', 'xai', 'deepseek'];
     if (result.status === 'fulfilled') {
       return result.value;
     }

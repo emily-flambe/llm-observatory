@@ -31,6 +31,8 @@ export interface Model {
   last_synced: string | null;
   released_at: string | null;
   knowledge_cutoff: string | null;
+  input_price_per_m: number | null; // USD per million input tokens
+  output_price_per_m: number | null; // USD per million output tokens
   created_at: string;
   updated_at: string;
 }

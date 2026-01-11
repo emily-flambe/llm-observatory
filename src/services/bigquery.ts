@@ -26,9 +26,12 @@ export interface BigQueryRow {
   prompt_template_name: string | null; // null for prompt-lab
   prompt: string; // rendered prompt or freeform prompt
   response: string | null;
+  reasoning_content: string | null; // chain-of-thought from reasoning models
   latency_ms: number;
   input_tokens: number;
   output_tokens: number;
+  input_cost: number | null; // USD cost for input tokens (null if pricing unknown)
+  output_cost: number | null; // USD cost for output tokens (null if pricing unknown)
   error: string | null;
   success: boolean;
 }
@@ -120,6 +123,7 @@ export function extractCompany(provider: string, modelName: string): string {
     google: 'Google',
     cloudflare: 'Cloudflare',
     xai: 'xAI',
+    deepseek: 'DeepSeek',
   };
 
   return providerMap[provider.toLowerCase()] ?? provider;
@@ -312,9 +316,12 @@ export async function insertRow(
               prompt_template_name: row.prompt_template_name,
               prompt: row.prompt,
               response: row.response,
+              reasoning_content: row.reasoning_content,
               latency_ms: row.latency_ms,
               input_tokens: row.input_tokens,
               output_tokens: row.output_tokens,
+              input_cost: row.input_cost,
+              output_cost: row.output_cost,
               error: row.error,
               success: row.success,
             },
@@ -450,9 +457,14 @@ export async function queryResponses(
         return index >= 0 ? values[index].v : null;
       };
 
+      const inputCostStr = getValue('input_cost');
+      const outputCostStr = getValue('output_cost');
+
       return {
         id: getValue('id') ?? '',
+        prompt_id: getValue('prompt_id') ?? '',
         collected_at: getValue('collected_at') ?? '',
+        source: (getValue('source') as 'collect' | 'prompt-lab') ?? 'collect',
         company: getValue('company') ?? '',
         product: getValue('product') ?? '',
         model: getValue('model') ?? '',
@@ -462,9 +474,12 @@ export async function queryResponses(
         prompt_template_name: getValue('prompt_template_name') ?? '',
         prompt: getValue('prompt') ?? '',
         response: getValue('response'),
+        reasoning_content: getValue('reasoning_content'),
         latency_ms: parseInt(getValue('latency_ms') ?? '0', 10),
         input_tokens: parseInt(getValue('input_tokens') ?? '0', 10),
         output_tokens: parseInt(getValue('output_tokens') ?? '0', 10),
+        input_cost: inputCostStr ? parseFloat(inputCostStr) : null,
+        output_cost: outputCostStr ? parseFloat(outputCostStr) : null,
         error: getValue('error'),
         success: getValue('success') === 'true',
       };
@@ -642,6 +657,10 @@ export interface PromptLabQuery {
     company: string;
     response: string | null;
     latency_ms: number;
+    input_tokens: number;
+    output_tokens: number;
+    input_cost: number | null;
+    output_cost: number | null;
     error: string | null;
     success: boolean;
   }>;
@@ -678,6 +697,10 @@ export async function getRecentPrompts(
         company,
         response,
         latency_ms,
+        input_tokens,
+        output_tokens,
+        input_cost,
+        output_cost,
         error,
         success
       )) as responses
@@ -831,14 +854,20 @@ export async function getRecentPrompts(
 
       const responses = (responsesArray ?? []).map((r) => {
         const fields = r.v.f;
+        const inputCostVal = fields[7].v as string | null;
+        const outputCostVal = fields[8].v as string | null;
         return {
           id: fields[0].v as string,
           model: fields[1].v as string,
           company: fields[2].v as string,
           response: fields[3].v as string | null,
           latency_ms: parseInt(fields[4].v as string, 10) || 0,
-          error: fields[5].v as string | null,
-          success: fields[6].v === true || fields[6].v === 'true',
+          input_tokens: parseInt(fields[5].v as string, 10) || 0,
+          output_tokens: parseInt(fields[6].v as string, 10) || 0,
+          input_cost: inputCostVal ? parseFloat(inputCostVal) : null,
+          output_cost: outputCostVal ? parseFloat(outputCostVal) : null,
+          error: fields[9].v as string | null,
+          success: fields[10].v === true || fields[10].v === 'true',
         };
       });
 

@@ -1,5 +1,6 @@
 import type { LLMProvider, LLMRequest, LLMResponse } from './types';
 import { LLMError } from './types';
+import { estimateTokens } from './tokens';
 
 export class CloudflareProvider implements LLMProvider {
   constructor(
@@ -35,14 +36,22 @@ export class CloudflareProvider implements LLMProvider {
       content = response.response;
     }
 
+    // Strip reasoning model thinking blocks
+    // Handles both <think>...</think> and cases where opening tag is missing (common with QwQ)
+    content = content.replace(/^[\s\S]*?<\/think>\s*/g, '').trim();
+
     if (!content) {
       throw new LLMError('Cloudflare AI returned empty response', 'cloudflare');
     }
 
+    // Estimate tokens since Cloudflare AI doesn't return token counts
+    const inputTokens = estimateTokens(request.prompt);
+    const outputTokens = estimateTokens(content);
+
     return {
       content,
-      inputTokens: 0, // Cloudflare AI doesn't return token counts
-      outputTokens: 0,
+      inputTokens,
+      outputTokens,
       latencyMs,
     };
   }
