@@ -5,7 +5,9 @@ import {
   getPromptTemplates,
   getPromptTemplate,
   createPromptTemplate,
+  getModelSyncLogs,
 } from '../services/storage';
+import { syncAllProviders } from '../services/model-sync';
 import { collectForTopic } from '../services/collector';
 import { createLLMProvider } from '../services/llm';
 import { getModel } from '../services/storage';
@@ -239,6 +241,18 @@ admin.get('/test-models', async (c) => {
     summary: { total: results.length, passed, failed },
     results,
   });
+});
+
+// Trigger model sync from provider APIs
+admin.post('/sync-models', async (c) => {
+  const results = await syncAllProviders(c.env);
+  return c.json({ results });
+});
+
+// Get recent sync logs
+admin.get('/sync-log', async (c) => {
+  const logs = await getModelSyncLogs(c.env.DB);
+  return c.json({ logs });
 });
 
 // Trigger collection (protected + rate limited)

@@ -19,6 +19,8 @@ export interface Model {
   model_name: string;
   display_name: string;
   company: string; // Actual creator (e.g., "Meta" not "cloudflare")
+  model_type: string;
+  source: 'auto' | 'manual';
 }
 
 export interface Response {
