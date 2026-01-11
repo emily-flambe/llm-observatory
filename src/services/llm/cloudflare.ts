@@ -1,6 +1,14 @@
 import type { LLMProvider, LLMRequest, LLMResponse } from './types';
 import { LLMError } from './types';
 
+/**
+ * Estimate token count from text using character-based heuristic.
+ * Average of ~4 characters per token for English text.
+ */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
 export class CloudflareProvider implements LLMProvider {
   constructor(
     public readonly id: string,
@@ -35,14 +43,21 @@ export class CloudflareProvider implements LLMProvider {
       content = response.response;
     }
 
+    // Strip Qwen3 thinking blocks (content between <think>...</think> tags)
+    content = content.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
+
     if (!content) {
       throw new LLMError('Cloudflare AI returned empty response', 'cloudflare');
     }
 
+    // Estimate tokens since Cloudflare AI doesn't return token counts
+    const inputTokens = estimateTokens(request.prompt);
+    const outputTokens = estimateTokens(content);
+
     return {
       content,
-      inputTokens: 0, // Cloudflare AI doesn't return token counts
-      outputTokens: 0,
+      inputTokens,
+      outputTokens,
       latencyMs,
     };
   }
