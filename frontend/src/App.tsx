@@ -6,7 +6,6 @@ import {
   NavLink,
   Navigate,
   useSearchParams,
-  useNavigate,
 } from 'react-router-dom';
 import TopicList from './components/TopicList';
 import ResponseView from './components/ResponseView';
@@ -15,7 +14,7 @@ import Landing from './pages/Landing';
 import PromptLab from './pages/PromptLab';
 import { parseBigQueryTimestamp } from './utils/date';
 import { renderMarkdown } from './utils/markdown';
-import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse } from './types';
+import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse } from './types';
 
 function CollectPage({ onCollectionComplete }: { onCollectionComplete: () => void }) {
   return (
@@ -151,18 +150,45 @@ function BrowseTopicsPage({ topics, error }: { topics: Topic[]; error: string | 
   );
 }
 
-function PromptHistoryContent({ searchParam }: { searchParam: string }) {
-  const navigate = useNavigate();
+interface FilterParams {
+  search: string;
+  model: string;
+  company: string;
+  topic: string;
+}
+
+function PromptHistoryContent({
+  filters,
+  models,
+  topics,
+  onFilterChange,
+}: {
+  filters: FilterParams;
+  models: Model[];
+  topics: Topic[];
+  onFilterChange: (newFilters: Partial<FilterParams>) => void;
+}) {
   const [prompts, setPrompts] = useState<PromptLabQuery[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchInput, setSearchInput] = useState(searchParam);
+  const [searchInput, setSearchInput] = useState(filters.search);
 
-  // Load prompts on mount (component is keyed by searchParam)
+  // Derive unique companies from models (actual creators, not hosting providers)
+  const companies = [...new Set(models.map((m) => m.company))].sort();
+
+  // Filter models by selected company
+  const filteredModels = filters.company
+    ? models.filter((m) => m.company === filters.company)
+    : models;
+
+  // Load prompts when filters change (component is keyed so loading starts as true)
   useEffect(() => {
     const params = new URLSearchParams();
     params.set('limit', '50');
-    if (searchParam) params.set('search', searchParam);
+    if (filters.search) params.set('search', filters.search);
+    if (filters.model) params.set('model', filters.model);
+    if (filters.company) params.set('company', filters.company);
+    if (filters.topic) params.set('topic', filters.topic);
 
     fetch(`/api/prompts?${params}`)
       .then(async (res) => {
@@ -179,19 +205,71 @@ function PromptHistoryContent({ searchParam }: { searchParam: string }) {
         setPrompts([]);
       })
       .finally(() => setLoading(false));
-  }, [searchParam]);
+  }, [filters.search, filters.model, filters.company, filters.topic]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchInput) {
-      navigate(`/browse/prompt-history?search=${encodeURIComponent(searchInput)}`);
-    } else {
-      navigate('/browse/prompt-history');
-    }
+    onFilterChange({ search: searchInput });
   };
+
+  const hasActiveFilters = filters.model || filters.company || filters.topic;
 
   return (
     <>
+      {/* Filters */}
+      <div className="mb-4 flex flex-wrap gap-3">
+        <select
+          value={filters.company}
+          onChange={(e) => {
+            onFilterChange({ company: e.target.value, model: '' }); // Reset model when company changes
+          }}
+          className="px-3 py-2 border border-border rounded-lg text-sm bg-white"
+        >
+          <option value="">All Companies</option>
+          {companies.map((company) => (
+            <option key={company} value={company}>
+              {company}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={filters.model}
+          onChange={(e) => onFilterChange({ model: e.target.value })}
+          className="px-3 py-2 border border-border rounded-lg text-sm bg-white"
+        >
+          <option value="">All Models</option>
+          {filteredModels.map((model) => (
+            <option key={model.id} value={model.model_name}>
+              {model.display_name}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={filters.topic}
+          onChange={(e) => onFilterChange({ topic: e.target.value })}
+          className="px-3 py-2 border border-border rounded-lg text-sm bg-white"
+        >
+          <option value="">All Topics</option>
+          {topics.map((topic) => (
+            <option key={topic.id} value={topic.id}>
+              {topic.name}
+            </option>
+          ))}
+        </select>
+
+        {hasActiveFilters && (
+          <button
+            onClick={() => onFilterChange({ model: '', company: '', topic: '' })}
+            className="px-3 py-2 text-sm text-ink-muted hover:text-ink"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
+      {/* Search */}
       <form onSubmit={handleSearch} className="mb-6">
         <div className="flex gap-2">
           <input
@@ -219,8 +297,8 @@ function PromptHistoryContent({ searchParam }: { searchParam: string }) {
         </div>
       ) : prompts.length === 0 ? (
         <div className="text-center py-20 text-ink-muted">
-          {searchParam
-            ? `No prompts matching "${searchParam}"`
+          {hasActiveFilters || filters.search
+            ? 'No prompts match the current filters'
             : 'No prompts yet. Use the Prompt Lab to submit prompts.'}
         </div>
       ) : (
@@ -235,14 +313,51 @@ function PromptHistoryContent({ searchParam }: { searchParam: string }) {
 }
 
 function BrowsePromptHistoryPage() {
-  const [searchParams] = useSearchParams();
-  const searchParam = searchParams.get('search') || '';
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [models, setModels] = useState<Model[]>([]);
+  const [topics, setTopics] = useState<Topic[]>([]);
+
+  // Load models and topics on mount
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/models').then((r) => r.json() as Promise<ModelsResponse>),
+      fetch('/api/topics').then((r) => r.json() as Promise<TopicsResponse>),
+    ]).then(([modelsData, topicsData]) => {
+      setModels(modelsData.models || []);
+      setTopics(topicsData.topics || []);
+    });
+  }, []);
+
+  const filters: FilterParams = {
+    search: searchParams.get('search') || '',
+    model: searchParams.get('model') || '',
+    company: searchParams.get('company') || '',
+    topic: searchParams.get('topic') || '',
+  };
+
+  const handleFilterChange = (newFilters: Partial<FilterParams>) => {
+    const updated = { ...filters, ...newFilters };
+    const params = new URLSearchParams();
+    if (updated.search) params.set('search', updated.search);
+    if (updated.model) params.set('model', updated.model);
+    if (updated.company) params.set('company', updated.company);
+    if (updated.topic) params.set('topic', updated.topic);
+    setSearchParams(params);
+  };
+
+  // Create a key from all filter params to reset component state when any filter changes
+  const filterKey = `${filters.search}-${filters.model}-${filters.company}-${filters.topic}`;
 
   return (
     <div>
       <BrowseNav />
-      {/* Key by searchParam to reset loading state on search changes */}
-      <PromptHistoryContent key={searchParam} searchParam={searchParam} />
+      <PromptHistoryContent
+        key={filterKey}
+        filters={filters}
+        models={models}
+        topics={topics}
+        onFilterChange={handleFilterChange}
+      />
     </div>
   );
 }

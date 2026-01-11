@@ -104,9 +104,18 @@ api.get('/topics/:id/responses', async (c) => {
 api.get('/prompts', async (c) => {
   const limitParam = c.req.query('limit');
   const search = c.req.query('search');
+  const model = c.req.query('model');
+  const company = c.req.query('company');
+  const topic = c.req.query('topic');
   const limit = limitParam ? parseInt(limitParam, 10) : 50;
 
-  const result = await getRecentPrompts(c.env, { limit, search: search || undefined });
+  const result = await getRecentPrompts(c.env, {
+    limit,
+    search: search || undefined,
+    model: model || undefined,
+    company: company || undefined,
+    topic: topic || undefined,
+  });
   if (!result.success) {
     return c.json({ error: result.error }, 500);
   }
@@ -160,7 +169,12 @@ api.post('/prompt-templates', async (c) => {
 // List all models
 api.get('/models', async (c) => {
   const models = await getModels(c.env.DB);
-  return c.json({ models });
+  // Add computed company field (actual creator, not hosting provider)
+  const modelsWithCompany = models.map((m) => ({
+    ...m,
+    company: extractCompany(m.provider, m.model_name),
+  }));
+  return c.json({ models: modelsWithCompany });
 });
 
 // ==================== Collection (Protected by Cloudflare Access) ====================
