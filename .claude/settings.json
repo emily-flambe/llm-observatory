@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd /Users/emilycogsdill/Documents/GitHub/llm-observatory-claude-config && npx eslint --fix \"$CLAUDE_FILE_PATH\" 2>/dev/null || true"
+            "command": "npx eslint --fix \"$CLAUDE_FILE_PATH\" 2>/dev/null || true"
           }
         ]
       }
