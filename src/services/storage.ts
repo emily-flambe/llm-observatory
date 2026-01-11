@@ -118,7 +118,7 @@ export async function createTopic(
 
 export async function getPromptTemplates(db: D1Database): Promise<PromptTemplate[]> {
   const result = await db
-    .prepare('SELECT * FROM prompt_templates WHERE active = 1 ORDER BY name')
+    .prepare('SELECT * FROM prompt_templates WHERE active = 1 ORDER BY created_at ASC')
     .all<PromptTemplate>();
   return result.results;
 }

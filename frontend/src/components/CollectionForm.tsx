@@ -73,8 +73,12 @@ export default function CollectionForm({ onCollectionComplete, editId }: Collect
         setTemplates(templatesData.templates);
         setModels(modelsData.models);
 
-        // Only auto-select models for new collections (not when editing)
+        // Only auto-select template and models for new collections (not when editing)
         if (!editId) {
+          // Select the oldest template (first in list, ordered by created_at ASC)
+          if (templatesData.templates.length > 0) {
+            setSelectedTemplateId(templatesData.templates[0].id);
+          }
           const modelList = modelsData.models;
           const byCompany = new Map<string, Model>();
           for (const model of modelList) {
