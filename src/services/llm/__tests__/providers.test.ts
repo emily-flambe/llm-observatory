@@ -275,4 +275,58 @@ describe('CloudflareProvider', () => {
 
     await expect(provider.complete({ prompt: 'Test' })).rejects.toThrow(LLMError);
   });
+
+  it('strips thinking blocks with both tags from response', async () => {
+    mockAi.run.mockResolvedValueOnce({
+      choices: [
+        {
+          message: {
+            content:
+              '<think>\nLet me think about this question...\nI should consider multiple factors.\n</think>\n\nThe answer is 42.',
+          },
+        },
+      ],
+    });
+
+    const result = await provider.complete({ prompt: 'Test' });
+
+    expect(result.content).toBe('The answer is 42.');
+    expect(result.content).not.toContain('<think>');
+  });
+
+  it('strips thinking when opening tag is missing (QwQ behavior)', async () => {
+    mockAi.run.mockResolvedValueOnce({
+      choices: [
+        {
+          message: {
+            content:
+              'Okay, let me think about this...\nI should consider factors.\n</think>\n\nThe answer is 42.',
+          },
+        },
+      ],
+    });
+
+    const result = await provider.complete({ prompt: 'Test' });
+
+    expect(result.content).toBe('The answer is 42.');
+    expect(result.content).not.toContain('</think>');
+  });
+
+  it('handles response with only thinking block', async () => {
+    mockAi.run.mockResolvedValueOnce({
+      choices: [{ message: { content: '<think>thinking only</think>' } }],
+    });
+
+    await expect(provider.complete({ prompt: 'Test' })).rejects.toThrow(LLMError);
+  });
+
+  it('returns content unchanged when no thinking tags present', async () => {
+    mockAi.run.mockResolvedValueOnce({
+      response: 'Just a normal response without any thinking.',
+    });
+
+    const result = await provider.complete({ prompt: 'Test' });
+
+    expect(result.content).toBe('Just a normal response without any thinking.');
+  });
 });
