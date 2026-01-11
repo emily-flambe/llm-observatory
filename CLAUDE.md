@@ -31,11 +31,13 @@ cp ../llm-observatory/.dev.vars .dev.vars  # CRITICAL: Copy AFTER make setup (it
 - **D1**: Config (topics, models, prompt_templates)
 - **BigQuery**: Response data
 
-Apply schema changes to both local and remote:
+Apply D1 schema changes to both local and remote:
 ```bash
 npx wrangler d1 execute llm-observatory-db --local --command "..."
 npx wrangler d1 execute llm-observatory-db --remote --command "..."
 ```
+
+For BigQuery queries/updates, use the `bq` CLI directly - don't ask the user to run them.
 
 ## Adding LLM Providers
 
