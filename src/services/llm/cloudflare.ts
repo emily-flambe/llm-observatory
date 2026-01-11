@@ -1,5 +1,6 @@
 import type { LLMProvider, LLMRequest, LLMResponse } from './types';
 import { LLMError } from './types';
+import { estimateTokens } from './tokens';
 
 export class CloudflareProvider implements LLMProvider {
   constructor(
@@ -43,10 +44,14 @@ export class CloudflareProvider implements LLMProvider {
       throw new LLMError('Cloudflare AI returned empty response', 'cloudflare');
     }
 
+    // Estimate tokens since Cloudflare AI doesn't return token counts
+    const inputTokens = estimateTokens(request.prompt);
+    const outputTokens = estimateTokens(content);
+
     return {
       content,
-      inputTokens: 0, // Cloudflare AI doesn't return token counts
-      outputTokens: 0,
+      inputTokens,
+      outputTokens,
       latencyMs,
     };
   }

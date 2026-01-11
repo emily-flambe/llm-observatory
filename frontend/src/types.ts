@@ -40,6 +40,8 @@ export interface Response {
   latency_ms: number;
   input_tokens: number;
   output_tokens: number;
+  input_cost: number | null;
+  output_cost: number | null;
   error: string | null;
   success: boolean;
 }
@@ -84,6 +86,10 @@ export interface PromptLabResponse {
   company: string;
   response: string | null;
   latency_ms: number;
+  input_tokens: number;
+  output_tokens: number;
+  input_cost: number | null;
+  output_cost: number | null;
   error: string | null;
   success: boolean;
 }

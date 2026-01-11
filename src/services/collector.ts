@@ -1,6 +1,7 @@
 import type { Env } from '../types/env';
 import { getModel, getPromptTemplate } from './storage';
 import { insertRow, extractProductFamily, extractCompany, type BigQueryRow } from './bigquery';
+import { estimateTokens } from './llm/tokens';
 
 export interface CollectionResult {
   success: boolean;
@@ -115,6 +116,19 @@ export async function collectForTopic(
 
   const latencyMs = Date.now() - startTime;
 
+  // Calculate costs based on model pricing
+  const finalInputTokens = inputTokens ?? 0;
+  const finalOutputTokens = outputTokens ?? 0;
+  let inputCost: number | null = null;
+  let outputCost: number | null = null;
+
+  if (model.input_price_per_m !== null && finalInputTokens > 0) {
+    inputCost = (finalInputTokens / 1_000_000) * model.input_price_per_m;
+  }
+  if (model.output_price_per_m !== null && finalOutputTokens > 0) {
+    outputCost = (finalOutputTokens / 1_000_000) * model.output_price_per_m;
+  }
+
   // Push to BigQuery (primary data store for responses)
   const bqRow: BigQueryRow = {
     id: responseId,
@@ -132,8 +146,10 @@ export async function collectForTopic(
     response: rawResponse || null,
     reasoning_content: reasoningContent,
     latency_ms: latencyMs,
-    input_tokens: inputTokens ?? 0,
-    output_tokens: outputTokens ?? 0,
+    input_tokens: finalInputTokens,
+    output_tokens: finalOutputTokens,
+    input_cost: inputCost,
+    output_cost: outputCost,
     error,
     success: !error,
   };
@@ -286,10 +302,11 @@ async function callCloudflare(prompt: string, model: string, ai: Ai): Promise<LL
     throw new Error('Cloudflare AI returned empty response');
   }
 
+  // Estimate tokens since Cloudflare AI doesn't return token counts
   return {
     content,
-    inputTokens: null, // Cloudflare AI doesn't return token counts
-    outputTokens: null,
+    inputTokens: estimateTokens(prompt),
+    outputTokens: estimateTokens(content),
   };
 }
 
