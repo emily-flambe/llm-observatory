@@ -121,6 +121,7 @@ export function extractCompany(provider: string, modelName: string): string {
     google: 'Google',
     cloudflare: 'Cloudflare',
     xai: 'xAI',
+    deepseek: 'DeepSeek',
   };
 
   return providerMap[provider.toLowerCase()] ?? provider;
