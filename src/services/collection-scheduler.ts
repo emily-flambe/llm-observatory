@@ -192,9 +192,12 @@ async function runCollection(
       prompt_template_name: collection.template_name,
       prompt: collection.prompt_text,
       response: responseContent,
+      reasoning_content: null, // TODO: Extract from reasoning models if available
       latency_ms: latencyMs,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
+      input_cost: null, // TODO: Calculate from model pricing
+      output_cost: null, // TODO: Calculate from model pricing
       error: errorMsg,
       success: !errorMsg,
       collection_id: collection.id,
