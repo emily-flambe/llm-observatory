@@ -651,7 +651,7 @@ export interface PromptLabQuery {
  */
 export async function getRecentPrompts(
   env: BigQueryEnv,
-  options: { limit?: number; search?: string } = {}
+  options: { limit?: number; search?: string; model?: string; company?: string; topic?: string } = {}
 ): Promise<BigQueryResult<PromptLabQuery[]>> {
   const tokenResult = await getAccessToken(env);
   if (!tokenResult.success) {
@@ -696,6 +696,33 @@ export async function getRecentPrompts(
       name: 'search',
       parameterType: { type: 'STRING' },
       parameterValue: { value: options.search },
+    });
+  }
+
+  if (options.model) {
+    query += ` AND model = @model`;
+    queryParameters.push({
+      name: 'model',
+      parameterType: { type: 'STRING' },
+      parameterValue: { value: options.model },
+    });
+  }
+
+  if (options.company) {
+    query += ` AND company = @company`;
+    queryParameters.push({
+      name: 'company',
+      parameterType: { type: 'STRING' },
+      parameterValue: { value: options.company },
+    });
+  }
+
+  if (options.topic) {
+    query += ` AND topic_id = @topic`;
+    queryParameters.push({
+      name: 'topic',
+      parameterType: { type: 'STRING' },
+      parameterValue: { value: options.topic },
     });
   }
 
