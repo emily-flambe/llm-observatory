@@ -1,5 +1,13 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  NavLink,
+  Navigate,
+  useSearchParams,
+  useNavigate,
+} from 'react-router-dom';
 import TopicList from './components/TopicList';
 import ResponseView from './components/ResponseView';
 import CollectionForm from './components/CollectionForm';
@@ -16,8 +24,6 @@ function CollectPage({ onCollectionComplete }: { onCollectionComplete: () => voi
   );
 }
 
-type BrowseTab = 'topics' | 'prompts';
-
 function PromptCard({ query }: { query: PromptLabQuery }) {
   const [expanded, setExpanded] = useState(false);
   const date = parseBigQueryTimestamp(query.collected_at);
@@ -29,7 +35,9 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
           <p className="text-sm text-ink line-clamp-2">{query.prompt}</p>
           <div className="mt-2 flex items-center gap-3 text-xs text-ink-muted">
             <span>{date.toLocaleDateString()}</span>
-            <span>{query.responses.length} model{query.responses.length !== 1 ? 's' : ''}</span>
+            <span>
+              {query.responses.length} model{query.responses.length !== 1 ? 's' : ''}
+            </span>
           </div>
         </div>
         <button
@@ -45,9 +53,7 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
             <div key={i} className="bg-paper rounded p-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-medium text-ink-light">{resp.model}</span>
-                {resp.success && (
-                  <span className="text-xs text-ink-muted">{resp.latency_ms}ms</span>
-                )}
+                {resp.success && <span className="text-xs text-ink-muted">{resp.latency_ms}ms</span>}
               </div>
               {resp.success ? (
                 <p className="text-sm text-ink whitespace-pre-wrap">{resp.response}</p>
@@ -62,36 +68,97 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
   );
 }
 
-function PromptHistoryTab() {
+function BrowseNav() {
+  return (
+    <div className="flex gap-1 mb-6 border-b border-border">
+      <NavLink
+        to="/browse/topics"
+        className={({ isActive }) =>
+          `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
+            isActive ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
+          }`
+        }
+      >
+        Topics
+      </NavLink>
+      <NavLink
+        to="/browse/prompt-history"
+        className={({ isActive }) =>
+          `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
+            isActive ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
+          }`
+        }
+      >
+        Prompt History
+      </NavLink>
+    </div>
+  );
+}
+
+function BrowseTopicsPage({ topics, error }: { topics: Topic[]; error: string | null }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const topicParam = searchParams.get('topic');
+
+  // Find selected topic from URL param
+  const selectedTopic = topicParam ? topics.find((t) => t.id === topicParam) ?? null : null;
+
+  const handleSelectTopic = (topic: Topic | null) => {
+    if (topic) {
+      setSearchParams({ topic: topic.id });
+    } else {
+      setSearchParams({});
+    }
+  };
+
+  return (
+    <div>
+      <BrowseNav />
+
+      {error ? (
+        <div className="text-center py-20">
+          <div className="text-error mb-2">Failed to load topics</div>
+          <div className="text-sm text-ink-muted">{error}</div>
+        </div>
+      ) : topics.length === 0 ? (
+        <div className="text-center py-20 text-ink-muted">
+          No topics with responses yet. Use the Collect page to gather responses.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+          <aside className="lg:col-span-1">
+            <TopicList
+              topics={topics}
+              selectedTopic={selectedTopic}
+              onSelectTopic={handleSelectTopic}
+            />
+          </aside>
+          <section className="lg:col-span-2">
+            {selectedTopic ? (
+              <ResponseView topic={selectedTopic} />
+            ) : (
+              <div className="text-center py-20 text-ink-muted">
+                Select a topic to view responses
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PromptHistoryContent({ searchParam }: { searchParam: string }) {
+  const navigate = useNavigate();
   const [prompts, setPrompts] = useState<PromptLabQuery[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState(searchParam);
 
+  // Load prompts on mount (component is keyed by searchParam)
   useEffect(() => {
-    fetch('/api/prompts?limit=50')
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to load prompts');
-        return data as PromptsResponse;
-      })
-      .then((data) => {
-        setPrompts(data.prompts || []);
-        setError(null);
-      })
-      .catch((err: Error) => {
-        setError(err.message);
-        setPrompts([]);
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
     const params = new URLSearchParams();
     params.set('limit', '50');
-    if (searchQuery) params.set('search', searchQuery);
+    if (searchParam) params.set('search', searchParam);
 
     fetch(`/api/prompts?${params}`)
       .then(async (res) => {
@@ -108,16 +175,25 @@ function PromptHistoryTab() {
         setPrompts([]);
       })
       .finally(() => setLoading(false));
+  }, [searchParam]);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchInput) {
+      navigate(`/browse/prompt-history?search=${encodeURIComponent(searchInput)}`);
+    } else {
+      navigate('/browse/prompt-history');
+    }
   };
 
   return (
-    <div>
+    <>
       <form onSubmit={handleSearch} className="mb-6">
         <div className="flex gap-2">
           <input
             type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search prompts..."
             className="flex-1 px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber/50"
           />
@@ -139,7 +215,9 @@ function PromptHistoryTab() {
         </div>
       ) : prompts.length === 0 ? (
         <div className="text-center py-20 text-ink-muted">
-          No prompts yet. Use the Prompt Lab to submit prompts.
+          {searchParam
+            ? `No prompts matching "${searchParam}"`
+            : 'No prompts yet. Use the Prompt Lab to submit prompts.'}
         </div>
       ) : (
         <div className="space-y-4">
@@ -148,75 +226,19 @@ function PromptHistoryTab() {
           ))}
         </div>
       )}
-    </div>
+    </>
   );
 }
 
-function BrowsePage({ topics, error }: { topics: Topic[]; error: string | null }) {
-  const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
-  const [activeTab, setActiveTab] = useState<BrowseTab>('topics');
+function BrowsePromptHistoryPage() {
+  const [searchParams] = useSearchParams();
+  const searchParam = searchParams.get('search') || '';
 
   return (
     <div>
-      {/* Tab navigation */}
-      <div className="flex gap-1 mb-6 border-b border-border">
-        <button
-          onClick={() => setActiveTab('topics')}
-          className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
-            activeTab === 'topics'
-              ? 'border-amber text-amber'
-              : 'border-transparent text-ink-muted hover:text-ink'
-          }`}
-        >
-          Topics
-        </button>
-        <button
-          onClick={() => setActiveTab('prompts')}
-          className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
-            activeTab === 'prompts'
-              ? 'border-amber text-amber'
-              : 'border-transparent text-ink-muted hover:text-ink'
-          }`}
-        >
-          Prompt History
-        </button>
-      </div>
-
-      {activeTab === 'topics' && (
-        <>
-          {error ? (
-            <div className="text-center py-20">
-              <div className="text-error mb-2">Failed to load topics</div>
-              <div className="text-sm text-ink-muted">{error}</div>
-            </div>
-          ) : topics.length === 0 ? (
-            <div className="text-center py-20 text-ink-muted">
-              No topics with responses yet. Use the Collect page to gather responses.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-              <aside className="lg:col-span-1">
-                <TopicList
-                  topics={topics}
-                  selectedTopic={selectedTopic}
-                  onSelectTopic={setSelectedTopic}
-                />
-              </aside>
-              <section className="lg:col-span-2">
-                {selectedTopic ? (
-                  <ResponseView topic={selectedTopic} />
-                ) : (
-                  <div className="text-center py-20 text-ink-muted">
-                    Select a topic to view responses
-                  </div>
-                )}
-              </section>
-            </div>
-          )}
-        </>
-      )}
-
-      {activeTab === 'prompts' && <PromptHistoryTab />}
+      <BrowseNav />
+      {/* Key by searchParam to reset loading state on search changes */}
+      <PromptHistoryContent key={searchParam} searchParam={searchParam} />
     </div>
   );
 }
@@ -228,9 +250,7 @@ function Layout({ children, loadTopics }: { children: React.ReactNode; loadTopic
         <div className="max-w-4xl mx-auto px-6 py-5">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-ink">
-                LLM Observatory
-              </h1>
+              <h1 className="text-2xl font-semibold tracking-tight text-ink">LLM Observatory</h1>
               <p className="text-sm text-ink-muted mt-0.5">
                 Compare what different AI models say about topics
               </p>
@@ -274,15 +294,17 @@ function Layout({ children, loadTopics }: { children: React.ReactNode; loadTopic
                 Collect
               </NavLink>
               <NavLink
-                to="/browse"
+                to="/browse/topics"
                 onClick={() => loadTopics()}
-                className={({ isActive }) =>
-                  `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
-                    isActive
+                className={({ isActive }) => {
+                  // Also highlight if we're on any /browse/* route
+                  const isBrowseRoute = window.location.pathname.startsWith('/browse');
+                  return `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
+                    isActive || isBrowseRoute
                       ? 'bg-amber text-white'
                       : 'bg-white text-ink-light hover:bg-paper-dark'
-                  }`
-                }
+                  }`;
+                }}
               >
                 Browse
               </NavLink>
@@ -291,9 +313,7 @@ function Layout({ children, loadTopics }: { children: React.ReactNode; loadTopic
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-10">
-        {children}
-      </main>
+      <main className="max-w-4xl mx-auto px-6 py-10">{children}</main>
     </div>
   );
 }
@@ -335,16 +355,19 @@ export default function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/prompt-lab" element={<PromptLab />} />
           <Route path="/collect" element={<CollectPage onCollectionComplete={loadTopics} />} />
+          {/* Redirect /browse to /browse/topics */}
+          <Route path="/browse" element={<Navigate to="/browse/topics" replace />} />
           <Route
-            path="/browse"
+            path="/browse/topics"
             element={
               loading ? (
                 <div className="text-center py-20 text-ink-muted">Loading topics...</div>
               ) : (
-                <BrowsePage topics={topics} error={error} />
+                <BrowseTopicsPage topics={topics} error={error} />
               )
             }
           />
+          <Route path="/browse/prompt-history" element={<BrowsePromptHistoryPage />} />
         </Routes>
       </Layout>
     </BrowserRouter>

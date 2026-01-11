@@ -33,9 +33,11 @@ export async function collectForTopic(
   modelId: string,
   promptTemplateId: string,
   env: Env,
-  topicName?: string // Optional: if provided, topicIdOrName is treated as ID
+  topicName?: string, // Optional: if provided, topicIdOrName is treated as ID
+  promptId?: string // Optional: groups responses from same prompt submission
 ): Promise<CollectionResult> {
   const responseId = crypto.randomUUID();
+  const finalPromptId = promptId ?? crypto.randomUUID();
   const collectedAt = new Date().toISOString();
 
   // Determine topic ID and name
@@ -104,6 +106,7 @@ export async function collectForTopic(
   // Push to BigQuery (primary data store for responses)
   const bqRow: BigQueryRow = {
     id: responseId,
+    prompt_id: finalPromptId,
     collected_at: collectedAt,
     source: 'collect',
     company: model.provider,

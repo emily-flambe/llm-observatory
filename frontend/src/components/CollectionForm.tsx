@@ -139,6 +139,9 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
     addLog(`Starting parallel collection for "${topic?.name}" with ${modelIds.length} models, ${count} iteration(s)`);
     addLog(`Template: ${template?.name}`);
 
+    // Generate a prompt ID to group all responses from this submission
+    const promptId = crypto.randomUUID();
+
     // Build all request tasks
     const tasks: Array<{ modelId: string; iteration: number; model: Model | undefined }> = [];
     for (const modelId of modelIds) {
@@ -165,6 +168,7 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
             topicName: topic?.name,
             promptTemplateId: selectedTemplateId,
             modelId,
+            promptId,
           }),
         });
 

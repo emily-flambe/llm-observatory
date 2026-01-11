@@ -14,6 +14,7 @@ export interface BigQueryEnv {
 
 export interface BigQueryRow {
   id: string;
+  prompt_id: string; // groups all responses from a single prompt submission
   collected_at: string; // ISO timestamp
   source: 'collect' | 'prompt-lab'; // where the response came from
   company: string; // provider like "openai", "anthropic"
@@ -257,6 +258,7 @@ export async function insertRow(
             insertId: row.id, // Deduplication key
             json: {
               id: row.id,
+              prompt_id: row.prompt_id,
               collected_at: row.collected_at,
               source: row.source,
               company: row.company,
@@ -585,12 +587,14 @@ export async function getTopicIdsWithResponses(
 }
 
 /**
- * Prompt Lab query result
+ * Prompt query result (from both prompt-lab and collect sources)
  */
 export interface PromptLabQuery {
   id: string;
   collected_at: string;
   prompt: string;
+  topic_name: string | null;
+  source: string;
   responses: Array<{
     model: string;
     company: string;
@@ -602,7 +606,7 @@ export interface PromptLabQuery {
 }
 
 /**
- * Get recent prompts from Prompt Lab
+ * Get recent prompts (from both prompt-lab and collect sources)
  */
 export async function getRecentPrompts(
   env: BigQueryEnv,
@@ -616,11 +620,16 @@ export async function getRecentPrompts(
   const limit = options.limit ?? 50;
   const url = `https://bigquery.googleapis.com/bigquery/v2/projects/${env.BQ_PROJECT_ID}/queries`;
 
-  // Query prompts from prompt-lab source, grouped by prompt text and timestamp
+  // Query all prompts, grouped by prompt_id (or synthetic key for legacy data)
+  // For records with prompt_id: group by prompt_id
+  // For legacy records without prompt_id: group by timestamp + prompt hash
   let query = `
     SELECT
-      prompt,
-      collected_at,
+      COALESCE(prompt_id, CONCAT(CAST(TIMESTAMP_TRUNC(collected_at, SECOND) AS STRING), '-', TO_HEX(MD5(prompt)))) as group_id,
+      MAX(prompt) as prompt,
+      MAX(topic_name) as topic_name,
+      MAX(source) as source,
+      MAX(collected_at) as collected_at,
       ARRAY_AGG(STRUCT(
         id,
         model,
@@ -631,7 +640,7 @@ export async function getRecentPrompts(
         success
       )) as responses
     FROM \`${env.BQ_PROJECT_ID}.${env.BQ_DATASET_ID}.${env.BQ_TABLE_ID}\`
-    WHERE source = 'prompt-lab'
+    WHERE 1=1
   `;
 
   const queryParameters: Array<{
@@ -650,7 +659,7 @@ export async function getRecentPrompts(
   }
 
   query += `
-    GROUP BY prompt, collected_at
+    GROUP BY group_id
     ORDER BY collected_at DESC
     LIMIT @limit
   `;
@@ -701,11 +710,14 @@ export async function getRecentPrompts(
       };
     }
 
-    // Parse the results - prompt, collected_at, responses array
+    // Parse the results - prompt_id, prompt, topic_name, source, collected_at, responses array
     const prompts: PromptLabQuery[] = (result.rows ?? []).map((row) => {
-      const prompt = row.f[0].v as string;
-      const collected_at = row.f[1].v as string;
-      const responsesArray = row.f[2].v as Array<{ v: { f: Array<{ v: unknown }> } }>;
+      const prompt_id = row.f[0].v as string;
+      const prompt = row.f[1].v as string;
+      const topic_name = row.f[2].v as string | null;
+      const source = row.f[3].v as string;
+      const collected_at = row.f[4].v as string;
+      const responsesArray = row.f[5].v as Array<{ v: { f: Array<{ v: unknown }> } }>;
 
       const responses = (responsesArray ?? []).map((r) => {
         const fields = r.v.f;
@@ -721,9 +733,11 @@ export async function getRecentPrompts(
       });
 
       return {
-        id: responses[0]?.id ?? crypto.randomUUID(),
+        id: prompt_id,
         collected_at,
         prompt,
+        topic_name,
+        source,
         responses,
       };
     });

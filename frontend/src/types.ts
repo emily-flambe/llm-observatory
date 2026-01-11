@@ -87,6 +87,8 @@ export interface PromptLabQuery {
   id: string;
   collected_at: string;
   prompt: string;
+  topic_name: string | null;
+  source: string;
   responses: PromptLabResponse[];
 }
 

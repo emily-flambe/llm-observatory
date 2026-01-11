@@ -194,6 +194,7 @@ admin.post('/collect', async (c) => {
     topicName?: string;
     modelId: string;
     promptTemplateId: string;
+    promptId?: string;
   }>();
 
   // Support both topicId (for existing topics) and topicName (for new topics)
@@ -206,7 +207,8 @@ admin.post('/collect', async (c) => {
     body.modelId,
     body.promptTemplateId,
     c.env,
-    body.topicId ? body.topicName : undefined
+    body.topicId ? body.topicName : undefined,
+    body.promptId
   );
 
   // Increment rate limit counter
@@ -274,6 +276,9 @@ admin.post('/collect-batch', async (c) => {
     error?: string;
   }> = [];
 
+  // Generate a prompt_id for this batch - all responses share the same prompt
+  const promptId = crypto.randomUUID();
+
   for (const modelId of body.modelIds) {
     for (let i = 0; i < count; i++) {
       const result = await collectForTopic(
@@ -281,7 +286,8 @@ admin.post('/collect-batch', async (c) => {
         modelId,
         body.promptTemplateId,
         c.env,
-        body.topicId ? body.topicName : undefined
+        body.topicId ? body.topicName : undefined,
+        promptId
       );
       results.push({
         modelId,
@@ -332,6 +338,7 @@ admin.post('/prompt', async (c) => {
   }
 
   const collectedAt = new Date().toISOString();
+  const promptId = crypto.randomUUID(); // Groups all responses from this submission
   const results: Array<{
     modelId: string;
     model: string;
@@ -389,6 +396,7 @@ admin.post('/prompt', async (c) => {
     // Save to BigQuery (fire and forget - don't block on this)
     const bqRow: BigQueryRow = {
       id: responseId,
+      prompt_id: promptId,
       collected_at: collectedAt,
       source: 'prompt-lab',
       company: model.provider,
