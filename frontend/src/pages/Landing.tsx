@@ -74,6 +74,9 @@ export default function Landing() {
     // DeepSeek
     if (id.includes('deepseek')) return 'https://www.deepseek.com/';
 
+    // xAI/Grok
+    if (name.includes('grok')) return 'https://x.ai/grok';
+
     return '#';
   };
 
