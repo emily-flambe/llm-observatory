@@ -96,8 +96,17 @@ function isOpenAIChatModel(model: OpenAIModel): boolean {
   if (id.startsWith('gpt-') || id.startsWith('o1') || id.startsWith('o3') || id.startsWith('o4')) {
     // Exclude fine-tunes
     if (id.includes(':ft-')) return false;
-    // Exclude audio/realtime/tts variants (non-chat models)
-    if (id.includes('-audio') || id.includes('-realtime') || id.includes('-tts')) return false;
+    // Exclude non-chat model variants
+    if (id.includes('-audio')) return false;
+    if (id.includes('-realtime')) return false;
+    if (id.includes('-tts')) return false;
+    if (id.includes('-transcribe')) return false;
+    if (id.includes('-diarize')) return false;
+    if (id.includes('-instruct')) return false;
+    if (id.includes('-search-')) return false;
+    if (id.includes('-codex')) return false;
+    if (id.includes('-deep-research')) return false;
+    if (id.includes('gpt-image') || id.includes('-image-')) return false;
     return true;
   }
 
