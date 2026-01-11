@@ -345,22 +345,32 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
 
   return (
     <div className="bg-white border border-border rounded-lg p-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm text-ink line-clamp-2">{query.prompt}</p>
-          <div className="mt-2 flex items-center gap-3 text-xs text-ink-muted">
+      <div className="space-y-1">
+        {/* Row 1: Prompt + Expand */}
+        <div className="flex items-start justify-between gap-4">
+          <p className="text-sm text-ink line-clamp-2 flex-1 min-w-0">{query.prompt}</p>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-xs text-amber hover:text-amber-dark shrink-0"
+          >
+            {expanded ? 'Collapse' : 'Expand'}
+          </button>
+        </div>
+        {/* Row 2: Metadata + Use Prompt */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 text-xs text-ink-muted">
             <span>{date.toLocaleDateString()}</span>
             <span>
               {query.responses.length} model{query.responses.length !== 1 ? 's' : ''}
             </span>
           </div>
+          <Link
+            to={`/prompt-lab?prompt=${encodeURIComponent(query.prompt)}&models=${query.responses.map((r) => r.model).join(',')}`}
+            className="text-xs text-amber hover:text-amber-dark"
+          >
+            Use Prompt
+          </Link>
         </div>
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="text-xs text-amber hover:text-amber-dark shrink-0"
-        >
-          {expanded ? 'Collapse' : 'Expand'}
-        </button>
       </div>
       {expanded && (
         <div className="mt-4 space-y-3 border-t border-border pt-4">

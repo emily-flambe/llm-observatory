@@ -229,6 +229,23 @@ export default function ModelSelector({
             Clear
           </button>
         </div>
+
+        {/* Expand all / Collapse all */}
+        <div className="flex gap-2 text-xs">
+          <button
+            onClick={() => setExpandedCompanies(new Set(sortedCompanies))}
+            className="text-ink-muted hover:text-ink-light"
+          >
+            Expand all
+          </button>
+          <span className="text-border">|</span>
+          <button
+            onClick={() => setExpandedCompanies(new Set())}
+            className="text-ink-muted hover:text-ink-light"
+          >
+            Collapse all
+          </button>
+        </div>
       </div>
 
       {/* Selection summary */}

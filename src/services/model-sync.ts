@@ -107,8 +107,17 @@ function isOpenAIChatModel(model: OpenAIModel): boolean {
   if (id.startsWith('gpt-') || id.startsWith('o1') || id.startsWith('o3') || id.startsWith('o4')) {
     // Exclude fine-tunes
     if (id.includes(':ft-')) return false;
-    // Exclude audio/realtime variants
-    if (id.includes('-audio') || id.includes('-realtime')) return false;
+    // Exclude non-chat model variants
+    if (id.includes('-audio')) return false;
+    if (id.includes('-realtime')) return false;
+    if (id.includes('-tts')) return false;
+    if (id.includes('-transcribe')) return false;
+    if (id.includes('-diarize')) return false;
+    if (id.includes('-instruct')) return false;
+    if (id.includes('-search-')) return false;
+    if (id.includes('-codex')) return false;
+    if (id.includes('-deep-research')) return false;
+    if (id.includes('gpt-image') || id.includes('-image-')) return false;
     return true;
   }
 
@@ -125,6 +134,11 @@ function isGoogleChatModel(model: GoogleModel): boolean {
   // Only include Gemini models (exclude deprecated PaLM, etc.)
   const name = model.name.toLowerCase();
   if (!name.includes('gemini')) {
+    return false;
+  }
+
+  // Exclude TTS models (non-chat)
+  if (name.includes('-tts')) {
     return false;
   }
 
