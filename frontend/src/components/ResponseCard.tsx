@@ -67,9 +67,6 @@ export default function ResponseCard({ response }: ResponseCardProps) {
 
       <div className="flex items-center gap-4 mt-4 pt-3 border-t border-border text-xs text-ink-muted">
         <span>{formatDate(response.collected_at)}</span>
-        {response.latency_ms > 0 && (
-          <span>{(response.latency_ms / 1000).toFixed(1)}s</span>
-        )}
         {response.input_tokens > 0 && (
           <span>{response.input_tokens + response.output_tokens} tokens</span>
         )}

@@ -53,9 +53,8 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
             <div key={i} className="bg-paper rounded p-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-medium text-ink-light">{resp.model}</span>
-                {resp.success && (
+                {resp.success && (resp.input_tokens > 0 || resp.input_cost !== null || resp.output_cost !== null) && (
                   <div className="flex items-center gap-3 text-xs text-ink-muted">
-                    <span>{resp.latency_ms}ms</span>
                     {resp.input_tokens > 0 && (
                       <span>{resp.input_tokens + resp.output_tokens} tokens</span>
                     )}
