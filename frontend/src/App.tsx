@@ -137,6 +137,12 @@ function ManageCollectionCard({
             </button>
           )}
           <Link
+            to={`/browse/collections/${collection.id}`}
+            className="px-2 py-1 text-xs border border-border rounded hover:bg-paper-dark"
+          >
+            History
+          </Link>
+          <Link
             to={`/collect/edit/${collection.id}`}
             className="px-2 py-1 text-xs border border-border rounded hover:bg-paper-dark"
           >
@@ -732,7 +738,10 @@ function CollectionCard({ collection }: { collection: Collection }) {
   };
 
   return (
-    <div className="bg-white border border-border rounded-lg p-4 hover:border-amber transition-colors">
+    <Link
+      to={`/browse/collections/${collection.id}`}
+      className="block bg-white border border-border rounded-lg p-4 hover:border-amber transition-colors"
+    >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -754,13 +763,95 @@ function CollectionCard({ collection }: { collection: Collection }) {
             )}
           </div>
         </div>
-        <Link
-          to={`/collect/${collection.id}`}
-          className="text-xs text-amber hover:text-amber-dark shrink-0"
-        >
-          Edit
-        </Link>
+        <span className="text-xs text-ink-muted shrink-0">View &rarr;</span>
       </div>
+    </Link>
+  );
+}
+
+function CollectionDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const [collection, setCollection] = useState<Collection | null>(null);
+  const [prompts, setPrompts] = useState<PromptLabQuery[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+
+    Promise.all([
+      fetch(`/api/collections/${id}`).then((res) => res.json()) as Promise<{ error?: string; collection: Collection }>,
+      fetch(`/api/collections/${id}/responses`).then((res) => res.json()) as Promise<PromptsResponse>,
+    ])
+      .then(([collectionData, responsesData]) => {
+        if (collectionData.error) {
+          throw new Error(collectionData.error);
+        }
+        setCollection(collectionData.collection);
+        setPrompts(responsesData.prompts || []);
+        setLoading(false);
+      })
+      .catch((err: Error) => {
+        setError(err.message);
+        setLoading(false);
+      });
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div>
+        <BrowseNav />
+        <div className="text-center py-20 text-ink-muted">Loading collection...</div>
+      </div>
+    );
+  }
+
+  if (error || !collection) {
+    return (
+      <div>
+        <BrowseNav />
+        <div className="text-center py-20">
+          <div className="text-error mb-2">Failed to load collection</div>
+          <div className="text-sm text-ink-muted">{error}</div>
+          <Link to="/browse/collections" className="text-amber hover:text-amber-dark text-sm mt-4 inline-block">
+            Back to Collections
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const displayName = collection.display_name || `${collection.topic_name} - ${collection.template_name}`;
+
+  return (
+    <div>
+      <BrowseNav />
+
+      {/* Collection Header */}
+      <div className="mb-6">
+        <Link to="/browse/collections" className="text-sm text-amber hover:text-amber-dark mb-2 inline-block">
+          &larr; Back to Collections
+        </Link>
+        <h2 className="text-xl font-semibold text-ink">{displayName}</h2>
+        <div className="flex items-center gap-4 mt-1 text-sm text-ink-muted">
+          <span>{collection.topic_name}</span>
+          <span>{collection.template_name}</span>
+          <span>{collection.model_count} models</span>
+        </div>
+      </div>
+
+      {/* Responses */}
+      {prompts.length === 0 ? (
+        <div className="text-center py-20 text-ink-muted">
+          No responses collected yet. Run the collection from Collect &gt; Manage.
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {prompts.map((query) => (
+            <PromptCard key={query.id} query={query} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1009,6 +1100,7 @@ export default function App() {
           <Route path="/browse" element={<Navigate to="/browse/prompts" replace />} />
           <Route path="/browse/prompts" element={<BrowsePromptsPage />} />
           <Route path="/browse/collections" element={<BrowseCollectionsPage />} />
+          <Route path="/browse/collections/:id" element={<CollectionDetailPage />} />
         </Routes>
       </Layout>
     </BrowserRouter>

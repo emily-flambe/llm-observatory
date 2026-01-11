@@ -26,6 +26,7 @@ import {
   queryResponses,
   getTopicsFromBigQuery,
   getRecentPrompts,
+  getCollectionResponses,
   insertRow,
   extractProductFamily,
   extractCompany,
@@ -222,6 +223,27 @@ api.get('/collections/:id', async (c) => {
       versions,
     },
   });
+});
+
+// Get responses for a collection
+api.get('/collections/:id/responses', async (c) => {
+  const { id } = c.req.param();
+  const limitParam = c.req.query('limit');
+  const limit = limitParam ? parseInt(limitParam, 10) : 100;
+
+  // Verify collection exists
+  const collection = await getCollection(c.env.DB, id);
+  if (!collection) {
+    return c.json({ error: 'Collection not found' }, 404);
+  }
+
+  // Get responses from BigQuery
+  const result = await getCollectionResponses(c.env, id, { limit });
+  if (!result.success) {
+    return c.json({ error: result.error }, 500);
+  }
+
+  return c.json({ prompts: result.data });
 });
 
 // Create new collection (or return existing if topic+template match)
