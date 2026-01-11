@@ -174,6 +174,53 @@ admin.get('/rate-limits', async (c) => {
   return c.json(status);
 });
 
+// Smoke test - verify all LLM APIs are working
+admin.get('/test-models', async (c) => {
+  const models = await getModels(c.env.DB);
+  const testPrompt = 'Reply with exactly: OK';
+
+  const results: Array<{
+    modelId: string;
+    displayName: string;
+    provider: string;
+    success: boolean;
+    latencyMs?: number;
+    error?: string;
+  }> = [];
+
+  for (const model of models) {
+    const start = Date.now();
+    try {
+      const provider = createLLMProvider(model.id, model.provider, model.model_name, c.env);
+      await provider.complete({ prompt: testPrompt, maxTokens: 10 });
+      results.push({
+        modelId: model.id,
+        displayName: model.display_name,
+        provider: model.provider,
+        success: true,
+        latencyMs: Date.now() - start,
+      });
+    } catch (err) {
+      results.push({
+        modelId: model.id,
+        displayName: model.display_name,
+        provider: model.provider,
+        success: false,
+        latencyMs: Date.now() - start,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  const passed = results.filter((r) => r.success).length;
+  const failed = results.filter((r) => !r.success).length;
+
+  return c.json({
+    summary: { total: results.length, passed, failed },
+    results,
+  });
+});
+
 // Trigger collection (protected + rate limited)
 admin.post('/collect', async (c) => {
   // Check rate limit (1 request = 1 model)
