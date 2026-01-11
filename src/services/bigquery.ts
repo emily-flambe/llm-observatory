@@ -84,6 +84,47 @@ export function extractProductFamily(modelName: string): string {
 }
 
 /**
+ * Extract company (creator) from provider and model name
+ * For Cloudflare-hosted models, extracts the actual creator from the model path
+ * Examples:
+ *   provider: "openai" -> "OpenAI"
+ *   provider: "anthropic" -> "Anthropic"
+ *   provider: "google" -> "Google"
+ *   provider: "cloudflare", model: "@cf/meta/llama-3.1-8b" -> "Meta"
+ *   provider: "cloudflare", model: "@cf/qwen/qwen3-30b" -> "Qwen"
+ *   provider: "cloudflare", model: "@cf/mistralai/mistral-small" -> "Mistral AI"
+ *   provider: "cloudflare", model: "@cf/google/gemma-3-12b" -> "Google"
+ *   provider: "cloudflare", model: "@cf/deepseek-ai/deepseek-r1" -> "DeepSeek"
+ */
+export function extractCompany(provider: string, modelName: string): string {
+  // For Cloudflare-hosted models, extract vendor from model path
+  if (provider === 'cloudflare' && modelName.startsWith('@cf/')) {
+    const parts = modelName.split('/');
+    if (parts.length >= 2) {
+      const vendor = parts[1].toLowerCase();
+      const vendorMap: Record<string, string> = {
+        meta: 'Meta',
+        qwen: 'Qwen',
+        mistralai: 'Mistral AI',
+        google: 'Google',
+        'deepseek-ai': 'DeepSeek',
+      };
+      return vendorMap[vendor] ?? vendor;
+    }
+  }
+
+  // For direct API providers, use proper casing
+  const providerMap: Record<string, string> = {
+    openai: 'OpenAI',
+    anthropic: 'Anthropic',
+    google: 'Google',
+    cloudflare: 'Cloudflare',
+  };
+
+  return providerMap[provider.toLowerCase()] ?? provider;
+}
+
+/**
  * Base64url encode (no padding, URL-safe)
  */
 function base64urlEncode(data: ArrayBuffer | Uint8Array | string): string {

@@ -15,6 +15,7 @@ import {
   getRecentPrompts,
   insertRow,
   extractProductFamily,
+  extractCompany,
   type BigQueryRow,
 } from '../services/bigquery';
 import { requireAccess } from '../middleware/access';
@@ -446,7 +447,7 @@ admin.post('/prompt', async (c) => {
       prompt_id: promptId,
       collected_at: collectedAt,
       source: 'prompt-lab',
-      company: model.provider,
+      company: extractCompany(model.provider, model.model_name),
       product: extractProductFamily(model.model_name),
       model: model.model_name,
       topic_id: null,
