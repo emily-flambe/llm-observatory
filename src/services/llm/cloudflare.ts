@@ -35,6 +35,9 @@ export class CloudflareProvider implements LLMProvider {
       content = response.response;
     }
 
+    // Strip Qwen3 thinking blocks (content between <think>...</think> tags)
+    content = content.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
+
     if (!content) {
       throw new LLMError('Cloudflare AI returned empty response', 'cloudflare');
     }
