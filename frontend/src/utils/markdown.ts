@@ -14,9 +14,9 @@ export function renderMarkdown(text: string): string {
   html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
 
-  // Italic (*text* or _text_)
-  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-  html = html.replace(/_([^_]+)_/g, '<em>$1</em>');
+  // Italic (*text* or _text_) - use lookbehind/lookahead to avoid matching inside **bold**
+  html = html.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<em>$1</em>');
+  html = html.replace(/(?<!_)_([^_\n]+?)_(?!_)/g, '<em>$1</em>');
 
   // Headers (# Header)
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');

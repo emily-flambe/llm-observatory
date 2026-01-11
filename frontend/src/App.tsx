@@ -14,6 +14,7 @@ import CollectionForm from './components/CollectionForm';
 import Landing from './pages/Landing';
 import PromptLab from './pages/PromptLab';
 import { parseBigQueryTimestamp } from './utils/date';
+import { renderMarkdown } from './utils/markdown';
 import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse } from './types';
 
 function CollectPage({ onCollectionComplete }: { onCollectionComplete: () => void }) {
@@ -56,7 +57,10 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
                 {resp.success && <span className="text-xs text-ink-muted">{resp.latency_ms}ms</span>}
               </div>
               {resp.success ? (
-                <p className="text-sm text-ink whitespace-pre-wrap">{resp.response}</p>
+                <div
+                  className="text-sm text-ink markdown-content"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(resp.response || '') }}
+                />
               ) : (
                 <p className="text-sm text-error">{resp.error}</p>
               )}
