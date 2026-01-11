@@ -9,8 +9,6 @@ import {
   useParams,
   Link,
 } from 'react-router-dom';
-import TopicList from './components/TopicList';
-import ResponseView from './components/ResponseView';
 import CollectionForm from './components/CollectionForm';
 import Landing from './pages/Landing';
 import PromptLab from './pages/PromptLab';
@@ -48,21 +46,21 @@ function CollectNavTabs() {
   );
 }
 
-function CollectCreatePage({ onCollectionComplete }: { onCollectionComplete: () => void }) {
+function CollectCreatePage() {
   return (
     <div>
       <CollectNavTabs />
-      <CollectionForm onCollectionComplete={onCollectionComplete} />
+      <CollectionForm />
     </div>
   );
 }
 
-function CollectEditPage({ onCollectionComplete }: { onCollectionComplete: () => void }) {
+function CollectEditPage() {
   const { id } = useParams<{ id: string }>();
   return (
     <div>
       <CollectNavTabs />
-      <CollectionForm onCollectionComplete={onCollectionComplete} editId={id} />
+      <CollectionForm editId={id} />
     </div>
   );
 }
@@ -411,16 +409,6 @@ function BrowseNav() {
   return (
     <div className="flex gap-1 mb-6 border-b border-border">
       <NavLink
-        to="/browse/topics"
-        className={({ isActive }) =>
-          `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
-            isActive ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
-          }`
-        }
-      >
-        Topics
-      </NavLink>
-      <NavLink
         to="/browse/prompts"
         className={({ isActive }) =>
           `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
@@ -440,58 +428,6 @@ function BrowseNav() {
       >
         Collections
       </NavLink>
-    </div>
-  );
-}
-
-function BrowseTopicsPage({ topics, error }: { topics: Topic[]; error: string | null }) {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const topicParam = searchParams.get('topic');
-
-  // Find selected topic from URL param
-  const selectedTopic = topicParam ? topics.find((t) => t.id === topicParam) ?? null : null;
-
-  const handleSelectTopic = (topic: Topic | null) => {
-    if (topic) {
-      setSearchParams({ topic: topic.id });
-    } else {
-      setSearchParams({});
-    }
-  };
-
-  return (
-    <div>
-      <BrowseNav />
-
-      {error ? (
-        <div className="text-center py-20">
-          <div className="text-error mb-2">Failed to load topics</div>
-          <div className="text-sm text-ink-muted">{error}</div>
-        </div>
-      ) : topics.length === 0 ? (
-        <div className="text-center py-20 text-ink-muted">
-          No topics with responses yet. Use the Collect page to gather responses.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-          <aside className="lg:col-span-1">
-            <TopicList
-              topics={topics}
-              selectedTopic={selectedTopic}
-              onSelectTopic={handleSelectTopic}
-            />
-          </aside>
-          <section className="lg:col-span-2">
-            {selectedTopic ? (
-              <ResponseView topic={selectedTopic} />
-            ) : (
-              <div className="text-center py-20 text-ink-muted">
-                Select a topic to view responses
-              </div>
-            )}
-          </section>
-        </div>
-      )}
     </div>
   );
 }
@@ -830,19 +766,31 @@ function CollectionCard({ collection }: { collection: Collection }) {
 }
 
 function BrowseCollectionsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [collections, setCollections] = useState<Collection[]>([]);
+  const [topics, setTopics] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Parse comma-separated values from URL
+  const parseArray = (param: string | null): string[] =>
+    param ? param.split(',').filter(Boolean) : [];
+
+  const filters = {
+    search: searchParams.get('search') || '',
+    topics: parseArray(searchParams.get('topics')),
+  };
+
+  const [searchInput, setSearchInput] = useState(filters.search);
+
   useEffect(() => {
-    fetch('/api/collections')
-      .then(async (res) => {
-        const data = (await res.json()) as { error?: string } & CollectionsResponse;
-        if (!res.ok) throw new Error(data.error || 'Failed to load collections');
-        return data;
-      })
-      .then((data) => {
-        setCollections(data.collections || []);
+    Promise.all([
+      fetch('/api/collections').then((r) => r.json() as Promise<CollectionsResponse>),
+      fetch('/api/topics').then((r) => r.json() as Promise<TopicsResponse>),
+    ])
+      .then(([collectionsData, topicsData]) => {
+        setCollections(collectionsData.collections || []);
+        setTopics(topicsData.topics || []);
         setError(null);
       })
       .catch((err: Error) => {
@@ -852,9 +800,84 @@ function BrowseCollectionsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const handleFilterChange = (newFilters: Partial<typeof filters>) => {
+    const updated = { ...filters, ...newFilters };
+    const params = new URLSearchParams();
+    if (updated.search) params.set('search', updated.search);
+    if (updated.topics.length > 0) params.set('topics', updated.topics.join(','));
+    setSearchParams(params);
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleFilterChange({ search: searchInput });
+  };
+
+  // Filter collections client-side
+  const filteredCollections = collections.filter((c) => {
+    // Search filter - match topic name, template name, or prompt text
+    if (filters.search) {
+      const search = filters.search.toLowerCase();
+      const matchesSearch =
+        c.topic_name?.toLowerCase().includes(search) ||
+        c.template_name?.toLowerCase().includes(search) ||
+        c.prompt_text?.toLowerCase().includes(search) ||
+        c.display_name?.toLowerCase().includes(search);
+      if (!matchesSearch) return false;
+    }
+    // Topic filter
+    if (filters.topics.length > 0 && !filters.topics.includes(c.topic_id)) {
+      return false;
+    }
+    return true;
+  });
+
+  const hasActiveFilters = filters.topics.length > 0;
+
   return (
     <div>
       <BrowseNav />
+
+      {/* Filters */}
+      <div className="mb-4 flex flex-wrap gap-3">
+        <MultiSelect
+          label="All Topics"
+          options={topics.map((t) => ({ label: t.name, value: t.id }))}
+          selected={filters.topics}
+          onChange={(topics) => handleFilterChange({ topics })}
+          getLabel={(o) => (typeof o === 'string' ? o : o.label)}
+          getValue={(o) => (typeof o === 'string' ? o : o.value)}
+        />
+
+        {hasActiveFilters && (
+          <button
+            onClick={() => handleFilterChange({ topics: [] })}
+            className="px-3 py-2 text-sm text-ink-muted hover:text-ink"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
+      {/* Search */}
+      <form onSubmit={handleSearch} className="mb-6">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search collections..."
+            className="flex-1 px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber/50"
+          />
+          <button
+            type="submit"
+            className="px-4 py-2 bg-amber text-white rounded-lg text-sm font-medium hover:bg-amber-dark transition-colors"
+          >
+            Search
+          </button>
+        </div>
+      </form>
+
       {loading ? (
         <div className="text-center py-20 text-ink-muted">Loading collections...</div>
       ) : error ? (
@@ -862,13 +885,15 @@ function BrowseCollectionsPage() {
           <div className="text-error mb-2">Failed to load collections</div>
           <div className="text-sm text-ink-muted">{error}</div>
         </div>
-      ) : collections.length === 0 ? (
+      ) : filteredCollections.length === 0 ? (
         <div className="text-center py-20 text-ink-muted">
-          No collections yet. Use the Collect page to create your first collection.
+          {hasActiveFilters || filters.search
+            ? 'No collections match the current filters'
+            : 'No collections yet. Use the Collect page to create your first collection.'}
         </div>
       ) : (
         <div className="space-y-4">
-          {collections.map((collection) => (
+          {filteredCollections.map((collection) => (
             <CollectionCard key={collection.id} collection={collection} />
           ))}
         </div>
@@ -877,7 +902,7 @@ function BrowseCollectionsPage() {
   );
 }
 
-function Layout({ children, loadTopics }: { children: React.ReactNode; loadTopics: () => void }) {
+function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
       <header className="border-b border-border bg-white/80 backdrop-blur-sm sticky top-0 z-10">
@@ -928,8 +953,7 @@ function Layout({ children, loadTopics }: { children: React.ReactNode; loadTopic
                 Collect
               </NavLink>
               <NavLink
-                to="/browse/topics"
-                onClick={() => loadTopics()}
+                to="/browse"
                 className={({ isActive }) => {
                   // Also highlight if we're on any /browse/* route
                   const isBrowseRoute = window.location.pathname.startsWith('/browse');
@@ -970,55 +994,19 @@ function Layout({ children, loadTopics }: { children: React.ReactNode; loadTopic
 }
 
 export default function App() {
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const loadTopics = () => {
-    fetch('/api/topics-with-responses')
-      .then(async (res) => {
-        const data = (await res.json()) as { error?: string } & TopicsResponse;
-        if (!res.ok) {
-          throw new Error(data.error || 'Failed to load topics');
-        }
-        return data;
-      })
-      .then((data) => {
-        setTopics(data.topics || []);
-        setLoading(false);
-        setError(null);
-      })
-      .catch((err: Error) => {
-        setError(err.message);
-        setTopics([]);
-        setLoading(false);
-      });
-  };
-
-  useEffect(() => {
-    loadTopics();
-  }, []);
-
   return (
     <BrowserRouter>
-      <Layout loadTopics={loadTopics}>
+      <Layout>
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/prompt-lab" element={<PromptLab />} />
-          <Route path="/collect" element={<CollectPage onCollectionComplete={loadTopics} />} />
-          <Route path="/collect/:id" element={<CollectPage onCollectionComplete={loadTopics} />} />
-          {/* Redirect /browse to /browse/topics */}
-          <Route path="/browse" element={<Navigate to="/browse/topics" replace />} />
-          <Route
-            path="/browse/topics"
-            element={
-              loading ? (
-                <div className="text-center py-20 text-ink-muted">Loading topics...</div>
-              ) : (
-                <BrowseTopicsPage topics={topics} error={error} />
-              )
-            }
-          />
+          {/* Collect routes */}
+          <Route path="/collect" element={<Navigate to="/collect/create" replace />} />
+          <Route path="/collect/create" element={<CollectCreatePage />} />
+          <Route path="/collect/manage" element={<CollectManagePage />} />
+          <Route path="/collect/edit/:id" element={<CollectEditPage />} />
+          {/* Browse routes */}
+          <Route path="/browse" element={<Navigate to="/browse/prompts" replace />} />
           <Route path="/browse/prompts" element={<BrowsePromptsPage />} />
           <Route path="/browse/collections" element={<BrowseCollectionsPage />} />
         </Routes>
