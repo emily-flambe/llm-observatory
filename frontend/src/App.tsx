@@ -17,11 +17,7 @@ import { renderMarkdown } from './utils/markdown';
 import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection, CollectionsResponse } from './types';
 
 function CollectPage({ onCollectionComplete }: { onCollectionComplete: () => void }) {
-  return (
-    <div className="max-w-xl">
-      <CollectionForm onCollectionComplete={onCollectionComplete} />
-    </div>
-  );
+  return <CollectionForm onCollectionComplete={onCollectionComplete} />;
 }
 
 function PromptCard({ query }: { query: PromptLabQuery }) {
