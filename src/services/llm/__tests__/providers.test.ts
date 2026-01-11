@@ -3,6 +3,7 @@ import { OpenAIProvider } from '../openai';
 import { AnthropicProvider } from '../anthropic';
 import { GoogleProvider } from '../google';
 import { CloudflareProvider } from '../cloudflare';
+import { DeepSeekProvider } from '../deepseek';
 import { LLMError } from '../types';
 
 // Mock fetch globally
@@ -328,5 +329,108 @@ describe('CloudflareProvider', () => {
     const result = await provider.complete({ prompt: 'Test' });
 
     expect(result.content).toBe('Just a normal response without any thinking.');
+  });
+});
+
+describe('DeepSeekProvider', () => {
+  // Import will be added at top of file
+  const provider = new DeepSeekProvider('test-deepseek', 'deepseek-reasoner', 'test-api-key');
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  it('sends prompt correctly in request body', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: 'Hello!' } }],
+        usage: { prompt_tokens: 10, completion_tokens: 5 },
+      }),
+    });
+
+    await provider.complete({ prompt: 'Hello world' });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.deepseek.com/v1/chat/completions',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"content":"Hello world"'),
+      })
+    );
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.messages[0].content).toBe('Hello world');
+    expect(body.messages[0].role).toBe('user');
+  });
+
+  it('returns content and token counts', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: 'Response text' } }],
+        usage: { prompt_tokens: 15, completion_tokens: 8 },
+      }),
+    });
+
+    const result = await provider.complete({ prompt: 'Test' });
+
+    expect(result.content).toBe('Response text');
+    expect(result.inputTokens).toBe(15);
+    expect(result.outputTokens).toBe(8);
+  });
+
+  it('extracts reasoning_content when present', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{
+          message: {
+            content: 'The answer is 42.',
+            reasoning_content: 'Let me think step by step...'
+          }
+        }],
+        usage: { prompt_tokens: 10, completion_tokens: 50 },
+      }),
+    });
+
+    const result = await provider.complete({ prompt: 'Test' });
+
+    expect(result.content).toBe('The answer is 42.');
+    expect(result.reasoningContent).toBe('Let me think step by step...');
+  });
+
+  it('handles missing reasoning_content gracefully', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: 'Simple response' } }],
+        usage: { prompt_tokens: 10, completion_tokens: 5 },
+      }),
+    });
+
+    const result = await provider.complete({ prompt: 'Test' });
+
+    expect(result.content).toBe('Simple response');
+    expect(result.reasoningContent).toBeUndefined();
+  });
+
+  it('throws LLMError on API failure', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: async () => 'Unauthorized',
+    });
+
+    await expect(provider.complete({ prompt: 'Test' })).rejects.toThrow(LLMError);
+  });
+
+  it('throws LLMError when response is empty', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ choices: [] }),
+    });
+
+    await expect(provider.complete({ prompt: 'Test' })).rejects.toThrow(LLMError);
   });
 });
