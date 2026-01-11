@@ -3,12 +3,12 @@
  *
  * Limits:
  * - collect: 100 requests/day (each model counts as 1)
- * - prompt: 50 requests/day
+ * - prompt: 5000 requests/day
  */
 
 const DAILY_LIMITS: Record<string, number> = {
   collect: 100,
-  prompt: 50,
+  prompt: 5000,
 };
 
 function getToday(): string {
