@@ -20,9 +20,11 @@ Use git worktrees for feature work:
 git fetch origin
 git worktree add ../llm-observatory-feature-x -b feature-x origin/main
 cd ../llm-observatory-feature-x
-cp ../llm-observatory/.dev.vars .dev.vars  # Copy API keys
 make setup
+cp ../llm-observatory/.dev.vars .dev.vars  # CRITICAL: Copy AFTER make setup (it overwrites)
 ```
+
+**CRITICAL: Copy `.dev.vars` AFTER `make setup`.** The setup script copies `.dev.vars.example` which will overwrite your copy.
 
 ## Database
 

@@ -408,10 +408,7 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
                     </svg>
                   )}
                 </div>
-                <div>
-                  <div className="text-sm font-medium text-ink">{model.display_name}</div>
-                  <div className="text-xs text-ink-muted">{model.provider}</div>
-                </div>
+                <span className="text-sm font-medium text-ink">{model.display_name}</span>
               </label>
             ))}
           </div>

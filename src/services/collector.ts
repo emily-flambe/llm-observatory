@@ -1,6 +1,6 @@
 import type { Env } from '../types/env';
 import { getModel, getPromptTemplate } from './storage';
-import { insertRow, extractProductFamily, type BigQueryRow } from './bigquery';
+import { insertRow, extractProductFamily, extractCompany, type BigQueryRow } from './bigquery';
 
 export interface CollectionResult {
   success: boolean;
@@ -109,7 +109,7 @@ export async function collectForTopic(
     prompt_id: finalPromptId,
     collected_at: collectedAt,
     source: 'collect',
-    company: model.provider,
+    company: extractCompany(model.provider, model.model_name),
     product: extractProductFamily(model.model_name),
     model: model.model_name,
     topic_id: finalTopicId,
