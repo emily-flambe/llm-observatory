@@ -14,7 +14,7 @@ make deploy     # Deploy to Cloudflare
 
 ## Git Workflow
 
-Use git worktrees for feature work:
+**ALWAYS use git worktrees for ALL work.** Never work directly on the main repository directory.
 
 ```bash
 git fetch origin
