@@ -653,6 +653,10 @@ export interface PromptLabQuery {
     company: string;
     response: string | null;
     latency_ms: number;
+    input_tokens: number;
+    output_tokens: number;
+    input_cost: number | null;
+    output_cost: number | null;
     error: string | null;
     success: boolean;
   }>;
@@ -689,6 +693,10 @@ export async function getRecentPrompts(
         company,
         response,
         latency_ms,
+        input_tokens,
+        output_tokens,
+        input_cost,
+        output_cost,
         error,
         success
       )) as responses
@@ -842,14 +850,20 @@ export async function getRecentPrompts(
 
       const responses = (responsesArray ?? []).map((r) => {
         const fields = r.v.f;
+        const inputCostVal = fields[7].v as string | null;
+        const outputCostVal = fields[8].v as string | null;
         return {
           id: fields[0].v as string,
           model: fields[1].v as string,
           company: fields[2].v as string,
           response: fields[3].v as string | null,
           latency_ms: parseInt(fields[4].v as string, 10) || 0,
-          error: fields[5].v as string | null,
-          success: fields[6].v === true || fields[6].v === 'true',
+          input_tokens: parseInt(fields[5].v as string, 10) || 0,
+          output_tokens: parseInt(fields[6].v as string, 10) || 0,
+          input_cost: inputCostVal ? parseFloat(inputCostVal) : null,
+          output_cost: outputCostVal ? parseFloat(outputCostVal) : null,
+          error: fields[9].v as string | null,
+          success: fields[10].v === true || fields[10].v === 'true',
         };
       });
 

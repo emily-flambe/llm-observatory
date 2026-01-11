@@ -73,6 +73,11 @@ export default function ResponseCard({ response }: ResponseCardProps) {
         {response.input_tokens > 0 && (
           <span>{response.input_tokens + response.output_tokens} tokens</span>
         )}
+        {(response.input_cost !== null || response.output_cost !== null) && (
+          <span className="text-green-600">
+            ${((response.input_cost || 0) + (response.output_cost || 0)).toFixed(6)}
+          </span>
+        )}
       </div>
     </div>
   );
