@@ -101,13 +101,15 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
   }, [selectedTopicId, selectedTemplateId, topics, templates]);
 
   const toggleModel = (modelId: string) => {
-    const newSet = new Set(selectedModelIds);
-    if (newSet.has(modelId)) {
-      newSet.delete(modelId);
-    } else {
-      newSet.add(modelId);
-    }
-    setSelectedModelIds(newSet);
+    setSelectedModelIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(modelId)) {
+        next.delete(modelId);
+      } else {
+        next.add(modelId);
+      }
+      return next;
+    });
   };
 
   const selectAllModels = () => setSelectedModelIds(new Set(models.map(m => m.id)));
