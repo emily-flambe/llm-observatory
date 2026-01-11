@@ -9,6 +9,7 @@ export interface Env {
   ANTHROPIC_API_KEY: string;
   GOOGLE_API_KEY: string;
   XAI_API_KEY: string;
+  DEEPSEEK_API_KEY: string;
 
   // BigQuery Config
   BQ_PROJECT_ID: string;

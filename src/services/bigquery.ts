@@ -26,6 +26,7 @@ export interface BigQueryRow {
   prompt_template_name: string | null; // null for prompt-lab
   prompt: string; // rendered prompt or freeform prompt
   response: string | null;
+  reasoning_content: string | null; // chain-of-thought from reasoning models
   latency_ms: number;
   input_tokens: number;
   output_tokens: number;
@@ -312,6 +313,7 @@ export async function insertRow(
               prompt_template_name: row.prompt_template_name,
               prompt: row.prompt,
               response: row.response,
+              reasoning_content: row.reasoning_content,
               latency_ms: row.latency_ms,
               input_tokens: row.input_tokens,
               output_tokens: row.output_tokens,
@@ -452,7 +454,9 @@ export async function queryResponses(
 
       return {
         id: getValue('id') ?? '',
+        prompt_id: getValue('prompt_id') ?? '',
         collected_at: getValue('collected_at') ?? '',
+        source: (getValue('source') as 'collect' | 'prompt-lab') ?? 'collect',
         company: getValue('company') ?? '',
         product: getValue('product') ?? '',
         model: getValue('model') ?? '',
@@ -462,6 +466,7 @@ export async function queryResponses(
         prompt_template_name: getValue('prompt_template_name') ?? '',
         prompt: getValue('prompt') ?? '',
         response: getValue('response'),
+        reasoning_content: getValue('reasoning_content'),
         latency_ms: parseInt(getValue('latency_ms') ?? '0', 10),
         input_tokens: parseInt(getValue('input_tokens') ?? '0', 10),
         output_tokens: parseInt(getValue('output_tokens') ?? '0', 10),
