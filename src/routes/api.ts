@@ -508,6 +508,7 @@ admin.post('/prompt', async (c) => {
       prompt_template_name: null,
       prompt: body.prompt,
       response: responseContent,
+      reasoning_content: null,
       latency_ms: latencyMs,
       input_tokens: inputTokens,
       output_tokens: outputTokens,

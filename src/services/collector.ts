@@ -70,6 +70,7 @@ export async function collectForTopic(
 
   const startTime = Date.now();
   let rawResponse = '';
+  let reasoningContent: string | null = null;
   let inputTokens: number | null = null;
   let outputTokens: number | null = null;
   let error: string | null = null;
@@ -98,6 +99,12 @@ export async function collectForTopic(
     } else if (model.provider === 'xai') {
       const result = await callXAI(prompt, model.model_name, env.XAI_API_KEY);
       rawResponse = result.content;
+      inputTokens = result.inputTokens;
+      outputTokens = result.outputTokens;
+    } else if (model.provider === 'deepseek') {
+      const result = await callDeepSeek(prompt, model.model_name, env.DEEPSEEK_API_KEY);
+      rawResponse = result.content;
+      reasoningContent = result.reasoningContent ?? null;
       inputTokens = result.inputTokens;
       outputTokens = result.outputTokens;
     } else {
@@ -137,6 +144,7 @@ export async function collectForTopic(
     prompt_template_name: promptTemplate.name,
     prompt,
     response: rawResponse || null,
+    reasoning_content: reasoningContent,
     latency_ms: latencyMs,
     input_tokens: finalInputTokens,
     output_tokens: finalOutputTokens,
@@ -165,6 +173,7 @@ export async function collectForTopic(
 
 interface LLMResponse {
   content: string;
+  reasoningContent?: string;
   inputTokens: number | null;
   outputTokens: number | null;
 }
@@ -285,8 +294,9 @@ async function callCloudflare(prompt: string, model: string, ai: Ai): Promise<LL
     content = response.response;
   }
 
-  // Strip Qwen3 thinking blocks (content between <think>...</think> tags)
-  content = content.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
+  // Strip reasoning model thinking blocks
+  // Handles both <think>...</think> and cases where opening tag is missing (common with QwQ)
+  content = content.replace(/^[\s\S]*?<\/think>\s*/g, '').trim();
 
   if (!content) {
     throw new Error('Cloudflare AI returned empty response');
@@ -297,6 +307,38 @@ async function callCloudflare(prompt: string, model: string, ai: Ai): Promise<LL
     content,
     inputTokens: estimateTokens(prompt),
     outputTokens: estimateTokens(content),
+  };
+}
+
+async function callDeepSeek(prompt: string, model: string, apiKey: string): Promise<LLMResponse> {
+  const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 8192,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`DeepSeek API error: ${response.status} ${text}`);
+  }
+
+  const data = (await response.json()) as {
+    choices: Array<{ message: { content: string; reasoning_content?: string } }>;
+    usage?: { prompt_tokens: number; completion_tokens: number };
+  };
+
+  return {
+    content: data.choices[0]?.message?.content ?? '',
+    reasoningContent: data.choices[0]?.message?.reasoning_content,
+    inputTokens: data.usage?.prompt_tokens ?? null,
+    outputTokens: data.usage?.completion_tokens ?? null,
   };
 }
 

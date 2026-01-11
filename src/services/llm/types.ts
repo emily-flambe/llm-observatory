@@ -6,6 +6,7 @@ export interface LLMRequest {
 
 export interface LLMResponse {
   content: string;
+  reasoningContent?: string;
   inputTokens: number;
   outputTokens: number;
   latencyMs: number;
