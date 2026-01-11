@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { Model } from '../types';
 import { renderMarkdown } from '../utils/markdown';
 import ModelSelector from '../components/ModelSelector';
@@ -24,6 +25,15 @@ export default function PromptLab() {
   const [wordLimit, setWordLimit] = useState(50);
   const [results, setResults] = useState<Map<string, ModelResult>>(new Map());
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [searchParams] = useSearchParams();
+
+  // Pre-fill prompt from URL params on mount
+  useEffect(() => {
+    const promptParam = searchParams.get('prompt');
+    if (promptParam) {
+      setPrompt(promptParam);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     fetch('/api/models')
@@ -32,7 +42,21 @@ export default function PromptLab() {
         const modelList = data.models || [];
         setModels(modelList);
 
-        // Auto-select the most recent model per company
+        // Check for URL param models first
+        const modelsParam = searchParams.get('models');
+        if (modelsParam) {
+          const modelParams = modelsParam.split(',').filter(Boolean);
+          // Match by id or model_name (prompt history uses model_name)
+          const matchingIds = modelList
+            .filter((m) => modelParams.includes(m.id) || modelParams.includes(m.model_name))
+            .map((m) => m.id);
+          if (matchingIds.length > 0) {
+            setSelectedModels(new Set(matchingIds));
+            return;
+          }
+        }
+
+        // Otherwise auto-select the most recent model per company
         const byCompany = new Map<string, Model>();
         for (const model of modelList) {
           const existing = byCompany.get(model.company);
@@ -49,7 +73,7 @@ export default function PromptLab() {
         }
         setSelectedModels(new Set(Array.from(byCompany.values()).map(m => m.id)));
       });
-  }, []);
+  }, [searchParams]);
 
   const toggleModel = (id: string) => {
     setSelectedModels((prev) => {
