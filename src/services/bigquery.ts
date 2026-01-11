@@ -709,12 +709,37 @@ export async function getRecentPrompts(
   }
 
   if (options.company) {
-    query += ` AND company = @company`;
-    queryParameters.push({
-      name: 'company',
-      parameterType: { type: 'STRING' },
-      parameterValue: { value: options.company },
-    });
+    // Match company by checking model name patterns since BigQuery data may have old company values
+    // For Cloudflare-hosted models, check the vendor path (e.g., @cf/meta/ for Meta)
+    const companyPatterns: Record<string, string[]> = {
+      'Meta': ['@cf/meta/%', 'llama%'],
+      'Qwen': ['@cf/qwen/%', 'qwen%', 'qwq%'],
+      'Mistral AI': ['@cf/mistralai/%', 'mistral%'],
+      'Google': ['@cf/google/%', 'gemini%', 'gemma%'],
+      'DeepSeek': ['@cf/deepseek%', 'deepseek%'],
+      'OpenAI': ['gpt-%'],
+      'Anthropic': ['claude%'],
+    };
+    const patterns = companyPatterns[options.company];
+    if (patterns && patterns.length > 0) {
+      const patternConditions = patterns.map((_, i) => `LOWER(model) LIKE @company_pattern_${i}`).join(' OR ');
+      query += ` AND (${patternConditions})`;
+      patterns.forEach((pattern, i) => {
+        queryParameters.push({
+          name: `company_pattern_${i}`,
+          parameterType: { type: 'STRING' },
+          parameterValue: { value: pattern.toLowerCase() },
+        });
+      });
+    } else {
+      // Fallback to exact company match
+      query += ` AND company = @company`;
+      queryParameters.push({
+        name: 'company',
+        parameterType: { type: 'STRING' },
+        parameterValue: { value: options.company },
+      });
+    }
   }
 
   if (options.topic) {
