@@ -7,11 +7,13 @@ import type {
   TopicsResponse,
   PromptTemplatesResponse,
   ModelsResponse,
+  CollectionDetail,
 } from '../types';
 import ModelSelector from './ModelSelector';
 
 interface CollectionFormProps {
   onCollectionComplete?: () => void;
+  editId?: string;
 }
 
 function HelpIcon({ text }: { text: string }) {
@@ -25,17 +27,21 @@ function HelpIcon({ text }: { text: string }) {
   );
 }
 
-export default function CollectionForm({ onCollectionComplete }: CollectionFormProps) {
+export default function CollectionForm({ onCollectionComplete, editId }: CollectionFormProps) {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingCollection, setLoadingCollection] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
   const [apiKey, setApiKey] = useState('');
   const [selectedTopicId, setSelectedTopicId] = useState<string>('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
   const [count, setCount] = useState(1);
+  const [scheduleType, setScheduleType] = useState<'none' | 'daily' | 'weekly' | 'monthly' | 'custom'>('none');
+  const [cronExpression, setCronExpression] = useState('0 6 * * *');
 
   const [showCustomTopic, setShowCustomTopic] = useState(false);
   const [customTopic, setCustomTopic] = useState({ name: '', description: '' });
@@ -67,23 +73,25 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
         setTemplates(templatesData.templates);
         setModels(modelsData.models);
 
-        // Auto-select the most recent model per company
-        const modelList = modelsData.models;
-        const byCompany = new Map<string, Model>();
-        for (const model of modelList) {
-          const existing = byCompany.get(model.company);
-          if (!existing) {
-            byCompany.set(model.company, model);
-          } else {
-            // Compare release dates - pick the newest
-            const existingDate = existing.released_at || '';
-            const modelDate = model.released_at || '';
-            if (modelDate > existingDate) {
+        // Only auto-select models for new collections (not when editing)
+        if (!editId) {
+          const modelList = modelsData.models;
+          const byCompany = new Map<string, Model>();
+          for (const model of modelList) {
+            const existing = byCompany.get(model.company);
+            if (!existing) {
               byCompany.set(model.company, model);
+            } else {
+              // Compare release dates - pick the newest
+              const existingDate = existing.released_at || '';
+              const modelDate = model.released_at || '';
+              if (modelDate > existingDate) {
+                byCompany.set(model.company, model);
+              }
             }
           }
+          setSelectedModelIds(new Set(Array.from(byCompany.values()).map(m => m.id)));
         }
-        setSelectedModelIds(new Set(Array.from(byCompany.values()).map(m => m.id)));
 
         setLoading(false);
       })
@@ -91,7 +99,44 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
         setError(err instanceof Error ? err.message : 'Failed to load data');
         setLoading(false);
       });
-  }, []);
+  }, [editId]);
+
+  // Load collection data when editing
+  useEffect(() => {
+    if (!editId || loading) return;
+
+    setLoadingCollection(true);
+    fetch(`/api/collections/${editId}`)
+      .then(r => r.json() as Promise<{ collection?: CollectionDetail; error?: string }>)
+      .then(data => {
+        if (data.error || !data.collection) {
+          setError(data.error || 'Collection not found');
+          setLoadingCollection(false);
+          return;
+        }
+
+        const collection = data.collection;
+        setIsEditing(true);
+        setSelectedTopicId(collection.topic_id);
+        setSelectedTemplateId(collection.template_id);
+        setSelectedModelIds(new Set(collection.models.map(m => m.id)));
+
+        if (collection.schedule_type) {
+          setScheduleType(collection.schedule_type);
+          if (collection.cron_expression) {
+            setCronExpression(collection.cron_expression);
+          }
+        } else {
+          setScheduleType('none');
+        }
+
+        setLoadingCollection(false);
+      })
+      .catch(err => {
+        setError(err instanceof Error ? err.message : 'Failed to load collection');
+        setLoadingCollection(false);
+      });
+  }, [editId, loading]);
 
   const previewPrompt = useMemo(() => {
     const topic = topics.find(t => t.id === selectedTopicId);
@@ -169,90 +214,145 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
     const template = templates.find(t => t.id === selectedTemplateId);
     const modelIds = Array.from(selectedModelIds);
 
-    addLog(`Starting parallel collection for "${topic?.name}" with ${modelIds.length} models, ${count} iteration(s)`);
+    addLog(`${isEditing ? 'Updating' : 'Creating'} collection for "${topic?.name}" with ${modelIds.length} models`);
     addLog(`Template: ${template?.name}`);
 
-    // Generate a prompt ID to group all responses from this submission
-    const promptId = crypto.randomUUID();
-
-    // Build all request tasks
-    const tasks: Array<{ modelId: string; iteration: number; model: Model | undefined }> = [];
-    for (const modelId of modelIds) {
-      const model = models.find(m => m.id === modelId);
-      for (let i = 0; i < count; i++) {
-        tasks.push({ modelId, iteration: i + 1, model });
-      }
+    // Convert schedule type to cron expression
+    let finalCron: string | null = null;
+    if (scheduleType !== 'none') {
+      if (scheduleType === 'daily') finalCron = '0 6 * * *';
+      else if (scheduleType === 'weekly') finalCron = '0 6 * * 1';
+      else if (scheduleType === 'monthly') finalCron = '0 6 1 * *';
+      else if (scheduleType === 'custom') finalCron = cronExpression;
     }
 
-    addLog(`Querying ${tasks.length} endpoints in parallel...`);
+    try {
+      let collectionId: string;
 
-    // Execute all requests in parallel
-    const promises = tasks.map(async ({ modelId, iteration, model }) => {
-      const iterLabel = count > 1 ? ` #${iteration}` : '';
-      try {
-        const res = await fetch('/api/admin/collect', {
+      if (isEditing && editId) {
+        // Update existing collection
+        const updateRes = await fetch(`/api/collections/${editId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model_ids: modelIds,
+            schedule_type: scheduleType === 'none' ? null : scheduleType,
+            cron_expression: finalCron,
+          }),
+        });
+
+        if (!updateRes.ok) {
+          const err = await updateRes.json() as { error?: string };
+          throw new Error(err.error || 'Failed to update collection');
+        }
+
+        collectionId = editId;
+        addLog(`Collection updated (ID: ${collectionId.slice(0, 8)}...)`);
+      } else {
+        // Create new collection
+        const createRes = await fetch('/api/collections', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            topicId: selectedTopicId,
-            topicName: topic?.name,
-            promptTemplateId: selectedTemplateId,
-            modelId,
-            promptId,
+            topic_id: selectedTopicId,
+            template_id: selectedTemplateId,
+            model_ids: modelIds,
+            schedule_type: scheduleType === 'none' ? null : scheduleType,
+            cron_expression: finalCron,
           }),
         });
 
-        const data = await res.json() as { success: boolean; responseId: string; latencyMs?: number; error?: string };
-
-        if (data.success) {
-          addLog(`✓ ${model?.display_name}${iterLabel}: OK (${((data.latencyMs || 0) / 1000).toFixed(1)}s)`);
-        } else {
-          addLog(`✗ ${model?.display_name}${iterLabel}: ${data.error || 'Failed'}`);
+        if (!createRes.ok) {
+          const err = await createRes.json() as { error?: string };
+          throw new Error(err.error || 'Failed to create collection');
         }
 
-        return {
-          modelId,
-          iteration,
-          success: data.success,
-          responseId: data.responseId,
-          latencyMs: data.latencyMs,
-          error: data.error,
-        } as CollectionResult;
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : 'Request failed';
-        addLog(`✗ ${model?.display_name}${iterLabel}: ${errorMsg}`);
-        return {
-          modelId,
-          iteration,
-          success: false,
-          responseId: '',
-          error: errorMsg,
-        } as CollectionResult;
+        const { collection } = await createRes.json() as { collection: { id: string } };
+        collectionId = collection.id;
+        addLog(`Collection created (ID: ${collectionId.slice(0, 8)}...)`);
       }
-    });
 
-    const allResults = await Promise.all(promises);
+      if (scheduleType !== 'none') {
+        addLog(`Scheduled: ${scheduleType === 'custom' ? cronExpression : scheduleType} (UTC)`);
+      }
 
-    const successful = allResults.filter(r => r.success).length;
-    addLog(`Collection complete: ${successful}/${allResults.length} successful`);
+      // Step 2: Run the collection for each iteration
+      const allResults: CollectionResult[] = [];
+      for (let iteration = 1; iteration <= count; iteration++) {
+        const iterLabel = count > 1 ? ` (iteration ${iteration}/${count})` : '';
+        addLog(`Running collection${iterLabel}...`);
 
-    setResults(allResults);
+        const runRes = await fetch(`/api/admin/collections/${collectionId}/run`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
+        });
+
+        if (!runRes.ok) {
+          const err = await runRes.json() as { error?: string };
+          addLog(`✗ Run failed: ${err.error || 'Unknown error'}`);
+          continue;
+        }
+
+        const runData = await runRes.json() as {
+          results: Array<{ modelId: string; success: boolean; latencyMs?: number; error?: string }>;
+          successful: number;
+          failed: number;
+        };
+
+        for (const result of runData.results) {
+          const model = models.find(m => m.id === result.modelId);
+          if (result.success) {
+            addLog(`✓ ${model?.display_name || result.modelId}${iterLabel}: OK (${((result.latencyMs || 0) / 1000).toFixed(1)}s)`);
+          } else {
+            addLog(`✗ ${model?.display_name || result.modelId}${iterLabel}: ${result.error || 'Failed'}`);
+          }
+          allResults.push({
+            modelId: result.modelId,
+            iteration,
+            success: result.success,
+            responseId: '',
+            latencyMs: result.latencyMs,
+            error: result.error,
+          });
+        }
+      }
+
+      const successful = allResults.filter(r => r.success).length;
+      addLog(`Collection complete: ${successful}/${allResults.length} successful`);
+
+      setResults(allResults);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Request failed';
+      addLog(`✗ Error: ${errorMsg}`);
+      setError(errorMsg);
+    }
+
     setSubmitting(false);
     onCollectionComplete?.();
   };
 
-  if (loading) {
+  if (loading || loadingCollection) {
     return <div className="text-ink-muted">Loading...</div>;
   }
 
   return (
     <div className="bg-white border border-border rounded-xl shadow-sm overflow-hidden">
       <div className="px-6 py-5 border-b border-border">
-        <h2 className="text-lg font-medium text-ink">Collect Responses</h2>
-        <p className="text-sm text-ink-muted mt-0.5">Query multiple LLMs on a topic</p>
+        <h2 className="text-lg font-medium text-ink">
+          {isEditing ? 'Edit Collection' : 'Collect Responses'}
+        </h2>
+        <p className="text-sm text-ink-muted mt-0.5">
+          {isEditing ? 'Update collection settings and run' : 'Query multiple LLMs on a topic'}
+        </p>
       </div>
 
       <div className="p-6 space-y-6">
@@ -282,19 +382,22 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
               <select
                 value={selectedTopicId}
                 onChange={e => setSelectedTopicId(e.target.value)}
-                className="flex-1 rounded-lg px-3 py-2.5"
+                disabled={isEditing}
+                className={`flex-1 rounded-lg px-3 py-2.5 ${isEditing ? 'bg-paper-dark text-ink-muted cursor-not-allowed' : ''}`}
               >
                 <option value="">Select a topic...</option>
                 {topics.map(topic => (
                   <option key={topic.id} value={topic.id}>{topic.name}</option>
                 ))}
               </select>
-              <button
-                onClick={() => setShowCustomTopic(true)}
-                className="px-3 py-2 bg-paper-dark hover:bg-border rounded-lg text-sm text-ink-light"
-              >
-                + New
-              </button>
+              {!isEditing && (
+                <button
+                  onClick={() => setShowCustomTopic(true)}
+                  className="px-3 py-2 bg-paper-dark hover:bg-border rounded-lg text-sm text-ink-light"
+                >
+                  + New
+                </button>
+              )}
             </div>
           ) : (
             <div className="bg-paper-dark border border-border rounded-lg p-4 space-y-3">
@@ -339,19 +442,22 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
               <select
                 value={selectedTemplateId}
                 onChange={e => setSelectedTemplateId(e.target.value)}
-                className="flex-1 rounded-lg px-3 py-2.5"
+                disabled={isEditing}
+                className={`flex-1 rounded-lg px-3 py-2.5 ${isEditing ? 'bg-paper-dark text-ink-muted cursor-not-allowed' : ''}`}
               >
                 <option value="">Select a template...</option>
                 {templates.map(t => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
-              <button
-                onClick={() => setShowCustomTemplate(true)}
-                className="px-3 py-2 bg-paper-dark hover:bg-border rounded-lg text-sm text-ink-light"
-              >
-                + New
-              </button>
+              {!isEditing && (
+                <button
+                  onClick={() => setShowCustomTemplate(true)}
+                  className="px-3 py-2 bg-paper-dark hover:bg-border rounded-lg text-sm text-ink-light"
+                >
+                  + New
+                </button>
+              )}
             </div>
           ) : (
             <div className="bg-paper-dark border border-border rounded-lg p-4 space-y-3">
@@ -453,6 +559,50 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
           </span>
         </div>
 
+        {/* Schedule */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-ink flex items-center">
+            Schedule (optional)
+            <HelpIcon text="Set up recurring collection runs. All times are in UTC." />
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {(['none', 'daily', 'weekly', 'monthly', 'custom'] as const).map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setScheduleType(type)}
+                className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                  scheduleType === type
+                    ? 'bg-amber text-white border-amber'
+                    : 'border-border text-ink-muted hover:border-ink-muted'
+                }`}
+              >
+                {type === 'none' ? 'One-time' : type.charAt(0).toUpperCase() + type.slice(1)}
+              </button>
+            ))}
+          </div>
+          {scheduleType === 'custom' && (
+            <div className="mt-2">
+              <label className="block text-xs text-ink-muted mb-1">Cron Expression (UTC)</label>
+              <input
+                type="text"
+                value={cronExpression}
+                onChange={(e) => setCronExpression(e.target.value)}
+                placeholder="0 6 * * *"
+                className="w-full rounded-lg px-3 py-2 text-sm font-mono"
+              />
+              <p className="text-xs text-ink-muted mt-1">
+                Format: minute hour day month weekday (e.g., "0 6 * * *" = daily at 6 AM UTC)
+              </p>
+            </div>
+          )}
+          {scheduleType !== 'none' && scheduleType !== 'custom' && (
+            <p className="text-xs text-ink-muted">
+              Runs {scheduleType} at 6:00 AM UTC
+            </p>
+          )}
+        </div>
+
         {/* Preview */}
         {previewPrompt && (
           <div className="space-y-2">
@@ -471,7 +621,11 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
           disabled={submitting || !apiKey || !selectedTopicId || !selectedTemplateId || selectedModelIds.size === 0}
           className="w-full btn-primary py-3 rounded-lg font-medium disabled:opacity-50"
         >
-          {submitting ? 'Collecting...' : `Collect from ${selectedModelIds.size} model${selectedModelIds.size !== 1 ? 's' : ''}`}
+          {submitting
+            ? (isEditing ? 'Updating...' : 'Collecting...')
+            : (isEditing
+                ? `Update & Run (${selectedModelIds.size} model${selectedModelIds.size !== 1 ? 's' : ''})`
+                : `Collect from ${selectedModelIds.size} model${selectedModelIds.size !== 1 ? 's' : ''}`)}
         </button>
       </div>
 

@@ -6,6 +6,8 @@ import {
   NavLink,
   Navigate,
   useSearchParams,
+  useParams,
+  Link,
 } from 'react-router-dom';
 import TopicList from './components/TopicList';
 import ResponseView from './components/ResponseView';
@@ -17,7 +19,8 @@ import { renderMarkdown } from './utils/markdown';
 import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection, CollectionsResponse } from './types';
 
 function CollectPage({ onCollectionComplete }: { onCollectionComplete: () => void }) {
-  return <CollectionForm onCollectionComplete={onCollectionComplete} />;
+  const { id } = useParams<{ id?: string }>();
+  return <CollectionForm onCollectionComplete={onCollectionComplete} editId={id} />;
 }
 
 function PromptCard({ query }: { query: PromptLabQuery }) {
@@ -489,6 +492,12 @@ function CollectionCard({ collection }: { collection: Collection }) {
             )}
           </div>
         </div>
+        <Link
+          to={`/collect/${collection.id}`}
+          className="text-xs text-amber hover:text-amber-dark shrink-0"
+        >
+          Edit
+        </Link>
       </div>
     </div>
   );
@@ -671,6 +680,7 @@ export default function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/prompt-lab" element={<PromptLab />} />
           <Route path="/collect" element={<CollectPage onCollectionComplete={loadTopics} />} />
+          <Route path="/collect/:id" element={<CollectPage onCollectionComplete={loadTopics} />} />
           {/* Redirect /browse to /browse/topics */}
           <Route path="/browse" element={<Navigate to="/browse/topics" replace />} />
           <Route

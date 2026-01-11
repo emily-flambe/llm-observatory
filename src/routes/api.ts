@@ -410,22 +410,15 @@ admin.post('/collections/:id/run', async (c) => {
   const promptId = crypto.randomUUID();
   const collectedAt = new Date().toISOString();
 
-  const results: Array<{
-    modelId: string;
-    success: boolean;
-    latencyMs?: number;
-    error?: string;
-  }> = [];
-
-  // Run collection against each model
-  for (const modelId of modelIds) {
+  // Run collection against all models in parallel
+  const modelPromises = modelIds.map(async (modelId) => {
     const model = await getModel(c.env.DB, modelId);
     if (!model) {
-      results.push({ modelId, success: false, error: 'Model not found' });
-      continue;
+      return { modelId, success: false, error: 'Model not found' } as const;
     }
 
     let responseContent: string | null = null;
+    let reasoningContent: string | null = null;
     let errorMsg: string | null = null;
     let latencyMs = 0;
     let inputTokens = 0;
@@ -437,13 +430,21 @@ admin.post('/collections/:id/run', async (c) => {
       const response = await provider.complete({ prompt: collection.prompt_text });
       latencyMs = Date.now() - start;
       responseContent = response.content;
+      reasoningContent = response.reasoningContent ?? null;
       inputTokens = response.inputTokens ?? 0;
       outputTokens = response.outputTokens ?? 0;
-
-      results.push({ modelId, success: true, latencyMs });
     } catch (err) {
       errorMsg = err instanceof Error ? err.message : 'Unknown error';
-      results.push({ modelId, success: false, error: errorMsg });
+    }
+
+    // Calculate costs
+    let inputCost: number | null = null;
+    let outputCost: number | null = null;
+    if (model.input_price_per_m !== null && inputTokens > 0) {
+      inputCost = (inputTokens / 1_000_000) * model.input_price_per_m;
+    }
+    if (model.output_price_per_m !== null && outputTokens > 0) {
+      outputCost = (outputTokens / 1_000_000) * model.output_price_per_m;
     }
 
     // Save to BigQuery with collection reference
@@ -461,9 +462,12 @@ admin.post('/collections/:id/run', async (c) => {
       prompt_template_name: collection.template_name,
       prompt: collection.prompt_text,
       response: responseContent,
+      reasoning_content: reasoningContent,
       latency_ms: latencyMs,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
+      input_cost: inputCost,
+      output_cost: outputCost,
       error: errorMsg,
       success: !errorMsg,
       collection_id: collection.id,
@@ -472,7 +476,13 @@ admin.post('/collections/:id/run', async (c) => {
     insertRow(c.env, bqRow).catch((err) => {
       console.error('Failed to save collection response to BigQuery:', err);
     });
-  }
+
+    return errorMsg
+      ? ({ modelId, success: false, error: errorMsg } as const)
+      : ({ modelId, success: true, latencyMs } as const);
+  });
+
+  const results = await Promise.all(modelPromises);
 
   // Update last_run_at
   await updateCollectionLastRunAt(c.env.DB, id);

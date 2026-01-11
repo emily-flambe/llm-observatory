@@ -128,3 +128,20 @@ export interface Collection {
 export interface CollectionsResponse {
   collections: Collection[];
 }
+
+export interface CollectionModel {
+  id: string;
+  display_name: string;
+  provider: string;
+}
+
+export interface CollectionVersion {
+  version: number;
+  model_ids: string[];
+  created_at: string;
+}
+
+export interface CollectionDetail extends Collection {
+  models: CollectionModel[];
+  versions: CollectionVersion[];
+}
