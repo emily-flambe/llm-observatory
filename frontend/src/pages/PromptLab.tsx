@@ -221,11 +221,13 @@ export default function PromptLab() {
               className="w-20 px-2 py-1 rounded text-sm text-center disabled:opacity-50"
             />
             <span className="text-sm text-ink-light">words</span>
-            <span
-              title="Appends 'Limit your response to N words.' to the end of your prompt"
-              className="text-ink-muted cursor-help text-sm"
-            >
-              ?
+            <span className="relative group">
+              <span className="w-4 h-4 inline-flex items-center justify-center rounded-full border border-ink-muted text-ink-muted text-xs cursor-help">
+                ?
+              </span>
+              <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-2 py-1 text-xs text-white bg-ink rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                Appends "Limit your response to N words." to your prompt
+              </span>
             </span>
           </div>
 
