@@ -29,6 +29,7 @@ export interface Model {
   model_type: string;
   source: 'auto' | 'manual';
   last_synced: string | null;
+  released_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -159,6 +160,7 @@ export async function upsertAutoModel(
     model_name: string;
     display_name: string;
     model_type?: string;
+    released_at?: string | null;
   }
 ): Promise<{ action: 'inserted' | 'updated' | 'skipped' }> {
   const existing = await getModel(db, model.id);
@@ -169,19 +171,26 @@ export async function upsertAutoModel(
     if (existing.source === 'manual') {
       return { action: 'skipped' };
     }
-    // Update auto model's last_synced
-    await db
-      .prepare('UPDATE models SET last_synced = ?, updated_at = ? WHERE id = ?')
-      .bind(now, now, model.id)
-      .run();
+    // Update auto model's last_synced (and released_at if provided and not already set)
+    if (model.released_at && !existing.released_at) {
+      await db
+        .prepare('UPDATE models SET last_synced = ?, released_at = ?, updated_at = ? WHERE id = ?')
+        .bind(now, model.released_at, now, model.id)
+        .run();
+    } else {
+      await db
+        .prepare('UPDATE models SET last_synced = ?, updated_at = ? WHERE id = ?')
+        .bind(now, now, model.id)
+        .run();
+    }
     return { action: 'updated' };
   }
 
   // Insert new auto model
   await db
     .prepare(
-      `INSERT INTO models (id, provider, model_name, display_name, active, model_type, source, last_synced, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 1, ?, 'auto', ?, ?, ?)`
+      `INSERT INTO models (id, provider, model_name, display_name, active, model_type, source, last_synced, released_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 1, ?, 'auto', ?, ?, ?, ?)`
     )
     .bind(
       model.id,
@@ -190,6 +199,7 @@ export async function upsertAutoModel(
       model.display_name,
       model.model_type ?? 'chat',
       now,
+      model.released_at ?? null,
       now,
       now
     )

@@ -7,7 +7,7 @@ export default function Landing() {
 
   useEffect(() => {
     fetch('/api/models')
-      .then((r) => r.json())
+      .then((r) => r.json() as Promise<{ models: Model[] }>)
       .then((data) => setModels(data.models || []));
   }, []);
 
@@ -28,7 +28,7 @@ export default function Landing() {
     return model.provider;
   };
 
-  // Group models by company
+  // Group models by company and sort by release date (newest first)
   const modelsByCompany = models.reduce(
     (acc, model) => {
       const company = getCompany(model);
@@ -38,6 +38,18 @@ export default function Landing() {
     },
     {} as Record<string, Model[]>
   );
+
+  // Sort models within each company by release date (newest first, null dates last)
+  for (const company of Object.keys(modelsByCompany)) {
+    modelsByCompany[company].sort((a, b) => {
+      // Models without release dates go to the bottom
+      if (!a.released_at && !b.released_at) return a.display_name.localeCompare(b.display_name);
+      if (!a.released_at) return 1;
+      if (!b.released_at) return -1;
+      // Newer models first (descending)
+      return b.released_at.localeCompare(a.released_at);
+    });
+  }
 
   // Sort companies alphabetically
   const sortedCompanies = Object.keys(modelsByCompany).sort();

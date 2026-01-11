@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS models (
     model_type TEXT DEFAULT 'chat',       -- 'chat', 'embedding', 'image'
     source TEXT DEFAULT 'manual',         -- 'auto' or 'manual'
     last_synced TEXT,                     -- ISO timestamp of last sync
+    released_at TEXT,                     -- ISO timestamp of model release (from provider API)
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );

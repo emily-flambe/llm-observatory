@@ -21,6 +21,7 @@ export interface Model {
   company: string; // Actual creator (e.g., "Meta" not "cloudflare")
   model_type: string;
   source: 'auto' | 'manual';
+  released_at: string | null;
 }
 
 export interface Response {

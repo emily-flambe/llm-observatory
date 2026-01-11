@@ -126,6 +126,11 @@ function isXAIChatModel(model: XAIModel): boolean {
   return id.includes('grok');
 }
 
+// Convert Unix timestamp to ISO string
+function unixToIso(timestamp: number): string {
+  return new Date(timestamp * 1000).toISOString();
+}
+
 // Sync OpenAI models
 async function syncOpenAIModels(env: Env): Promise<ModelSyncResult> {
   const provider = 'openai';
@@ -152,6 +157,7 @@ async function syncOpenAIModels(env: Env): Promise<ModelSyncResult> {
         model_name: model.id,
         display_name: generateDisplayName(model.id),
         model_type: 'chat',
+        released_at: model.created ? unixToIso(model.created) : null,
       });
       if (result.action === 'inserted') modelsAdded++;
     }
@@ -204,6 +210,7 @@ async function syncAnthropicModels(env: Env): Promise<ModelSyncResult> {
         model_name: model.id,
         display_name: model.display_name || generateDisplayName(model.id),
         model_type: 'chat',
+        released_at: model.created_at || null,
       });
       if (result.action === 'inserted') modelsAdded++;
     }
@@ -306,6 +313,7 @@ async function syncXAIModels(env: Env): Promise<ModelSyncResult> {
         model_name: model.id,
         display_name: generateDisplayName(model.id),
         model_type: 'chat',
+        released_at: model.created ? unixToIso(model.created) : null,
       });
       if (result.action === 'inserted') modelsAdded++;
     }
