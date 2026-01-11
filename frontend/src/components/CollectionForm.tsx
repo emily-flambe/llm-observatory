@@ -8,6 +8,7 @@ import type {
   PromptTemplatesResponse,
   ModelsResponse,
 } from '../types';
+import ModelSelector from './ModelSelector';
 
 interface CollectionFormProps {
   onCollectionComplete?: () => void;
@@ -405,42 +406,14 @@ export default function CollectionForm({ onCollectionComplete }: CollectionFormP
 
         {/* Models */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="block text-sm font-medium text-ink">Models</label>
-            <div className="flex gap-3 text-xs">
-              <button onClick={selectAllModels} className="text-amber hover:text-amber-light">Select all</button>
-              <button onClick={clearAllModels} className="text-ink-muted hover:text-ink-light">Clear</button>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {models.map(model => (
-              <label
-                key={model.id}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all ${
-                  selectedModelIds.has(model.id)
-                    ? 'bg-amber-bg border-2 border-amber'
-                    : 'bg-paper border border-border hover:border-ink-muted'
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedModelIds.has(model.id)}
-                  onChange={() => toggleModel(model.id)}
-                  className="sr-only"
-                />
-                <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
-                  selectedModelIds.has(model.id) ? 'bg-amber border-amber' : 'border-border'
-                }`}>
-                  {selectedModelIds.has(model.id) && (
-                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/>
-                    </svg>
-                  )}
-                </div>
-                <span className="text-sm font-medium text-ink">{model.display_name}</span>
-              </label>
-            ))}
-          </div>
+          <label className="block text-sm font-medium text-ink">Models</label>
+          <ModelSelector
+            models={models}
+            selectedModels={selectedModelIds}
+            onToggleModel={toggleModel}
+            onSelectAll={selectAllModels}
+            onClearAll={clearAllModels}
+          />
         </div>
 
         {/* Count */}
