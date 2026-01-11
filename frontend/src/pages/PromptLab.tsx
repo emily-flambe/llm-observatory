@@ -56,6 +56,9 @@ export default function PromptLab() {
 
     setIsSubmitting(true);
 
+    // Generate a single promptId for all requests - groups responses together
+    const promptId = crypto.randomUUID();
+
     // Initialize all selected models with pending status
     const initialResults = new Map<string, ModelResult>();
     const selectedModelsList = models.filter((m) => selectedModels.has(m.id));
@@ -92,6 +95,7 @@ export default function PromptLab() {
           body: JSON.stringify({
             prompt: prompt.trim(),
             modelIds: [model.id],
+            promptId, // Share same ID across all requests for grouping
           }),
         });
 

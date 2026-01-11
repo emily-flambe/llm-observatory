@@ -378,6 +378,7 @@ admin.post('/prompt', async (c) => {
   const body = await c.req.json<{
     prompt: string;
     modelIds: string[];
+    promptId?: string; // Optional - if provided, all responses will share this ID
   }>();
 
   if (!body.prompt || !body.modelIds?.length) {
@@ -400,7 +401,8 @@ admin.post('/prompt', async (c) => {
   }
 
   const collectedAt = new Date().toISOString();
-  const promptId = crypto.randomUUID(); // Groups all responses from this submission
+  // Use provided promptId (for grouping across multiple requests) or generate new one
+  const promptId = body.promptId || crypto.randomUUID();
   const results: Array<{
     modelId: string;
     model: string;
