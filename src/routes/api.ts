@@ -104,17 +104,22 @@ api.get('/topics/:id/responses', async (c) => {
 api.get('/prompts', async (c) => {
   const limitParam = c.req.query('limit');
   const search = c.req.query('search');
-  const model = c.req.query('model');
-  const company = c.req.query('company');
-  const topic = c.req.query('topic');
+  const modelsParam = c.req.query('models'); // comma-separated
+  const companiesParam = c.req.query('companies'); // comma-separated
+  const topicsParam = c.req.query('topics'); // comma-separated
   const limit = limitParam ? parseInt(limitParam, 10) : 50;
+
+  // Parse comma-separated values into arrays
+  const models = modelsParam ? modelsParam.split(',').filter(Boolean) : undefined;
+  const companies = companiesParam ? companiesParam.split(',').filter(Boolean) : undefined;
+  const topics = topicsParam ? topicsParam.split(',').filter(Boolean) : undefined;
 
   const result = await getRecentPrompts(c.env, {
     limit,
     search: search || undefined,
-    model: model || undefined,
-    company: company || undefined,
-    topic: topic || undefined,
+    models,
+    companies,
+    topics,
   });
   if (!result.success) {
     return c.json({ error: result.error }, 500);

@@ -152,9 +152,83 @@ function BrowseTopicsPage({ topics, error }: { topics: Topic[]; error: string | 
 
 interface FilterParams {
   search: string;
-  model: string;
-  company: string;
-  topic: string;
+  models: string[];
+  companies: string[];
+  topics: string[];
+}
+
+// Multi-select dropdown component
+function MultiSelect({
+  label,
+  options,
+  selected,
+  onChange,
+  getLabel = (o) => o,
+  getValue = (o) => o,
+}: {
+  label: string;
+  options: string[] | { label: string; value: string }[];
+  selected: string[];
+  onChange: (values: string[]) => void;
+  getLabel?: (option: string | { label: string; value: string }) => string;
+  getValue?: (option: string | { label: string; value: string }) => string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const toggleValue = (value: string) => {
+    if (selected.includes(value)) {
+      onChange(selected.filter((v) => v !== value));
+    } else {
+      onChange([...selected, value]);
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="px-3 py-2 border border-border rounded-lg text-sm bg-white flex items-center gap-2 min-w-[140px]"
+      >
+        <span className="flex-1 text-left truncate">
+          {selected.length === 0 ? label : `${selected.length} selected`}
+        </span>
+        <svg
+          className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute top-full left-0 mt-1 bg-white border border-border rounded-lg shadow-lg z-20 min-w-[200px] max-h-64 overflow-y-auto">
+            {options.map((option) => {
+              const value = typeof option === 'string' ? option : getValue(option);
+              const optionLabel = typeof option === 'string' ? option : getLabel(option);
+              return (
+                <label
+                  key={value}
+                  className="flex items-center gap-2 px-3 py-2 hover:bg-paper cursor-pointer text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(value)}
+                    onChange={() => toggleValue(value)}
+                    className="rounded"
+                  />
+                  <span className="truncate">{optionLabel}</span>
+                </label>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 function PromptHistoryContent({
@@ -176,19 +250,20 @@ function PromptHistoryContent({
   // Derive unique companies from models (actual creators, not hosting providers)
   const companies = [...new Set(models.map((m) => m.company))].sort();
 
-  // Filter models by selected company
-  const filteredModels = filters.company
-    ? models.filter((m) => m.company === filters.company)
-    : models;
+  // Filter models by selected companies (if any selected, show only those companies' models)
+  const filteredModels =
+    filters.companies.length > 0
+      ? models.filter((m) => filters.companies.includes(m.company))
+      : models;
 
   // Load prompts when filters change (component is keyed so loading starts as true)
   useEffect(() => {
     const params = new URLSearchParams();
     params.set('limit', '50');
     if (filters.search) params.set('search', filters.search);
-    if (filters.model) params.set('model', filters.model);
-    if (filters.company) params.set('company', filters.company);
-    if (filters.topic) params.set('topic', filters.topic);
+    if (filters.models.length > 0) params.set('models', filters.models.join(','));
+    if (filters.companies.length > 0) params.set('companies', filters.companies.join(','));
+    if (filters.topics.length > 0) params.set('topics', filters.topics.join(','));
 
     fetch(`/api/prompts?${params}`)
       .then(async (res) => {
@@ -205,63 +280,48 @@ function PromptHistoryContent({
         setPrompts([]);
       })
       .finally(() => setLoading(false));
-  }, [filters.search, filters.model, filters.company, filters.topic]);
+  }, [filters.search, filters.models, filters.companies, filters.topics]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     onFilterChange({ search: searchInput });
   };
 
-  const hasActiveFilters = filters.model || filters.company || filters.topic;
+  const hasActiveFilters =
+    filters.models.length > 0 || filters.companies.length > 0 || filters.topics.length > 0;
 
   return (
     <>
       {/* Filters */}
       <div className="mb-4 flex flex-wrap gap-3">
-        <select
-          value={filters.company}
-          onChange={(e) => {
-            onFilterChange({ company: e.target.value, model: '' }); // Reset model when company changes
-          }}
-          className="px-3 py-2 border border-border rounded-lg text-sm bg-white"
-        >
-          <option value="">All Companies</option>
-          {companies.map((company) => (
-            <option key={company} value={company}>
-              {company}
-            </option>
-          ))}
-        </select>
+        <MultiSelect
+          label="All Companies"
+          options={companies}
+          selected={filters.companies}
+          onChange={(companies) => onFilterChange({ companies })}
+        />
 
-        <select
-          value={filters.model}
-          onChange={(e) => onFilterChange({ model: e.target.value })}
-          className="px-3 py-2 border border-border rounded-lg text-sm bg-white"
-        >
-          <option value="">All Models</option>
-          {filteredModels.map((model) => (
-            <option key={model.id} value={model.model_name}>
-              {model.display_name}
-            </option>
-          ))}
-        </select>
+        <MultiSelect
+          label="All Models"
+          options={filteredModels.map((m) => ({ label: m.display_name, value: m.model_name }))}
+          selected={filters.models}
+          onChange={(models) => onFilterChange({ models })}
+          getLabel={(o) => (typeof o === 'string' ? o : o.label)}
+          getValue={(o) => (typeof o === 'string' ? o : o.value)}
+        />
 
-        <select
-          value={filters.topic}
-          onChange={(e) => onFilterChange({ topic: e.target.value })}
-          className="px-3 py-2 border border-border rounded-lg text-sm bg-white"
-        >
-          <option value="">All Topics</option>
-          {topics.map((topic) => (
-            <option key={topic.id} value={topic.id}>
-              {topic.name}
-            </option>
-          ))}
-        </select>
+        <MultiSelect
+          label="All Topics"
+          options={topics.map((t) => ({ label: t.name, value: t.id }))}
+          selected={filters.topics}
+          onChange={(topics) => onFilterChange({ topics })}
+          getLabel={(o) => (typeof o === 'string' ? o : o.label)}
+          getValue={(o) => (typeof o === 'string' ? o : o.value)}
+        />
 
         {hasActiveFilters && (
           <button
-            onClick={() => onFilterChange({ model: '', company: '', topic: '' })}
+            onClick={() => onFilterChange({ models: [], companies: [], topics: [] })}
             className="px-3 py-2 text-sm text-ink-muted hover:text-ink"
           >
             Clear filters
@@ -328,25 +388,29 @@ function BrowsePromptHistoryPage() {
     });
   }, []);
 
+  // Parse comma-separated values from URL
+  const parseArray = (param: string | null): string[] =>
+    param ? param.split(',').filter(Boolean) : [];
+
   const filters: FilterParams = {
     search: searchParams.get('search') || '',
-    model: searchParams.get('model') || '',
-    company: searchParams.get('company') || '',
-    topic: searchParams.get('topic') || '',
+    models: parseArray(searchParams.get('models')),
+    companies: parseArray(searchParams.get('companies')),
+    topics: parseArray(searchParams.get('topics')),
   };
 
   const handleFilterChange = (newFilters: Partial<FilterParams>) => {
     const updated = { ...filters, ...newFilters };
     const params = new URLSearchParams();
     if (updated.search) params.set('search', updated.search);
-    if (updated.model) params.set('model', updated.model);
-    if (updated.company) params.set('company', updated.company);
-    if (updated.topic) params.set('topic', updated.topic);
+    if (updated.models.length > 0) params.set('models', updated.models.join(','));
+    if (updated.companies.length > 0) params.set('companies', updated.companies.join(','));
+    if (updated.topics.length > 0) params.set('topics', updated.topics.join(','));
     setSearchParams(params);
   };
 
   // Create a key from all filter params to reset component state when any filter changes
-  const filterKey = `${filters.search}-${filters.model}-${filters.company}-${filters.topic}`;
+  const filterKey = `${filters.search}-${filters.models.join(',')}-${filters.companies.join(',')}-${filters.topics.join(',')}`;
 
   return (
     <div>

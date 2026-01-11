@@ -652,7 +652,7 @@ export interface PromptLabQuery {
  */
 export async function getRecentPrompts(
   env: BigQueryEnv,
-  options: { limit?: number; search?: string; model?: string; company?: string; topic?: string } = {}
+  options: { limit?: number; search?: string; models?: string[]; companies?: string[]; topics?: string[] } = {}
 ): Promise<BigQueryResult<PromptLabQuery[]>> {
   const tokenResult = await getAccessToken(env);
   if (!tokenResult.success) {
@@ -700,18 +700,20 @@ export async function getRecentPrompts(
     });
   }
 
-  if (options.model) {
-    query += ` AND model = @model`;
-    queryParameters.push({
-      name: 'model',
-      parameterType: { type: 'STRING' },
-      parameterValue: { value: options.model },
+  if (options.models && options.models.length > 0) {
+    const modelConditions = options.models.map((_, i) => `model = @model_${i}`).join(' OR ');
+    query += ` AND (${modelConditions})`;
+    options.models.forEach((model, i) => {
+      queryParameters.push({
+        name: `model_${i}`,
+        parameterType: { type: 'STRING' },
+        parameterValue: { value: model },
+      });
     });
   }
 
-  if (options.company) {
+  if (options.companies && options.companies.length > 0) {
     // Match company by checking model name patterns since BigQuery data may have old company values
-    // For Cloudflare-hosted models, check the vendor path (e.g., @cf/meta/ for Meta)
     const companyPatterns: Record<string, string[]> = {
       'Meta': ['@cf/meta/%', 'llama%'],
       'Qwen': ['@cf/qwen/%', 'qwen%', 'qwq%'],
@@ -720,35 +722,49 @@ export async function getRecentPrompts(
       'DeepSeek': ['@cf/deepseek%', 'deepseek%'],
       'OpenAI': ['gpt-%'],
       'Anthropic': ['claude%'],
+      'xAI': ['grok%'],
     };
-    const patterns = companyPatterns[options.company];
-    if (patterns && patterns.length > 0) {
-      const patternConditions = patterns.map((_, i) => `LOWER(model) LIKE @company_pattern_${i}`).join(' OR ');
-      query += ` AND (${patternConditions})`;
-      patterns.forEach((pattern, i) => {
+
+    const allPatternConditions: string[] = [];
+    let patternIndex = 0;
+
+    for (const company of options.companies) {
+      const patterns = companyPatterns[company];
+      if (patterns && patterns.length > 0) {
+        for (const pattern of patterns) {
+          allPatternConditions.push(`LOWER(model) LIKE @company_pattern_${patternIndex}`);
+          queryParameters.push({
+            name: `company_pattern_${patternIndex}`,
+            parameterType: { type: 'STRING' },
+            parameterValue: { value: pattern.toLowerCase() },
+          });
+          patternIndex++;
+        }
+      } else {
+        allPatternConditions.push(`company = @company_${patternIndex}`);
         queryParameters.push({
-          name: `company_pattern_${i}`,
+          name: `company_${patternIndex}`,
           parameterType: { type: 'STRING' },
-          parameterValue: { value: pattern.toLowerCase() },
+          parameterValue: { value: company },
         });
-      });
-    } else {
-      // Fallback to exact company match
-      query += ` AND company = @company`;
-      queryParameters.push({
-        name: 'company',
-        parameterType: { type: 'STRING' },
-        parameterValue: { value: options.company },
-      });
+        patternIndex++;
+      }
+    }
+
+    if (allPatternConditions.length > 0) {
+      query += ` AND (${allPatternConditions.join(' OR ')})`;
     }
   }
 
-  if (options.topic) {
-    query += ` AND topic_id = @topic`;
-    queryParameters.push({
-      name: 'topic',
-      parameterType: { type: 'STRING' },
-      parameterValue: { value: options.topic },
+  if (options.topics && options.topics.length > 0) {
+    const topicConditions = options.topics.map((_, i) => `topic_id = @topic_${i}`).join(' OR ');
+    query += ` AND (${topicConditions})`;
+    options.topics.forEach((topic, i) => {
+      queryParameters.push({
+        name: `topic_${i}`,
+        parameterType: { type: 'STRING' },
+        parameterValue: { value: topic },
+      });
     });
   }
 
