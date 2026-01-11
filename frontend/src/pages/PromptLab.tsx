@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { Model } from '../types';
 import { renderMarkdown } from '../utils/markdown';
+import ModelSelector from '../components/ModelSelector';
 
 type ModelStatus = 'idle' | 'pending' | 'loading' | 'success' | 'error';
 
@@ -24,10 +25,27 @@ export default function PromptLab() {
 
   useEffect(() => {
     fetch('/api/models')
-      .then((r) => r.json())
+      .then((r) => r.json() as Promise<{ models: Model[] }>)
       .then((data) => {
-        setModels(data.models || []);
-        setSelectedModels(new Set((data.models || []).map((m: Model) => m.id)));
+        const modelList = data.models || [];
+        setModels(modelList);
+
+        // Auto-select the most recent model per company
+        const byCompany = new Map<string, Model>();
+        for (const model of modelList) {
+          const existing = byCompany.get(model.company);
+          if (!existing) {
+            byCompany.set(model.company, model);
+          } else {
+            // Compare release dates - pick the newest
+            const existingDate = existing.released_at || '';
+            const modelDate = model.released_at || '';
+            if (modelDate > existingDate) {
+              byCompany.set(model.company, model);
+            }
+          }
+        }
+        setSelectedModels(new Set(Array.from(byCompany.values()).map(m => m.id)));
       });
   }, []);
 
@@ -43,13 +61,8 @@ export default function PromptLab() {
     });
   };
 
-  const toggleAll = () => {
-    if (selectedModels.size === models.length) {
-      setSelectedModels(new Set());
-    } else {
-      setSelectedModels(new Set(models.map((m) => m.id)));
-    }
-  };
+  const selectAll = () => setSelectedModels(new Set(models.map((m) => m.id)));
+  const clearAll = () => setSelectedModels(new Set());
 
   const handleSubmit = async () => {
     if (!prompt.trim() || selectedModels.size === 0 || !apiKey.trim()) return;
@@ -100,11 +113,13 @@ export default function PromptLab() {
         });
 
         if (!response.ok) {
-          const err = await response.json();
+          const err = (await response.json()) as { error?: string };
           throw new Error(err.error || 'Request failed');
         }
 
-        const data = await response.json();
+        const data = (await response.json()) as {
+          results?: Array<{ success: boolean; response?: string; latencyMs?: number; error?: string }>;
+        };
         const result = data.results?.[0];
 
         setResults((prev) => {
@@ -172,32 +187,14 @@ export default function PromptLab() {
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-ink-light">Models</label>
-              <button
-                type="button"
-                onClick={toggleAll}
-                className="text-xs text-amber hover:text-amber-light"
-              >
-                {selectedModels.size === models.length ? 'Deselect All' : 'Select All'}
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              {models.map((model) => (
-                <label
-                  key={model.id}
-                  className="flex items-center gap-2 cursor-pointer bg-paper-dark px-3 py-2 rounded-lg"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedModels.has(model.id)}
-                    onChange={() => toggleModel(model.id)}
-                    className="rounded"
-                  />
-                  <span className="text-sm text-ink-light">{model.display_name}</span>
-                </label>
-              ))}
-            </div>
+            <label className="block text-sm font-medium text-ink-light mb-2">Models</label>
+            <ModelSelector
+              models={models}
+              selectedModels={selectedModels}
+              onToggleModel={toggleModel}
+              onSelectAll={selectAll}
+              onClearAll={clearAll}
+            />
           </div>
 
           <button

@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { Env } from './types/env';
 import { api } from './routes/api';
+import { syncAllProviders } from './services/model-sync';
+import { syncBasellmMetadata } from './services/basellm';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -16,4 +18,17 @@ app.all('*', async (c) => {
   return c.env.ASSETS.fetch(c.req.raw);
 });
 
-export default app;
+// Full sync: provider models + basellm metadata enrichment
+async function fullModelSync(env: Env) {
+  // First sync models from provider APIs
+  await syncAllProviders(env);
+  // Then enrich with basellm metadata (release dates, knowledge cutoff)
+  await syncBasellmMetadata(env);
+}
+
+export default {
+  fetch: app.fetch,
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(fullModelSync(env));
+  },
+};
