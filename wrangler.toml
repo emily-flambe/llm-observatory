@@ -6,6 +6,9 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 preview_urls = true
 
+[build]
+command = "npm run build:frontend"
+
 # Custom domain
 [[routes]]
 pattern = "observatory.emilycogsdill.com"
