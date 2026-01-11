@@ -4,6 +4,7 @@ import type { Env } from './types/env';
 import { api } from './routes/api';
 import { syncAllProviders } from './services/model-sync';
 import { syncBasellmMetadata } from './services/basellm';
+import { runScheduledCollections } from './services/collection-scheduler';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -29,6 +30,20 @@ async function fullModelSync(env: Env) {
 export default {
   fetch: app.fetch,
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(fullModelSync(env));
+    const hour = new Date(event.scheduledTime).getUTCHours();
+
+    // Model sync runs at 6 AM UTC
+    if (hour === 6) {
+      ctx.waitUntil(fullModelSync(env));
+    }
+
+    // Collection scheduler runs every hour
+    ctx.waitUntil(
+      runScheduledCollections(env).then((result) => {
+        if (result.ran > 0) {
+          console.log(`Scheduled collections: ran ${result.ran} of ${result.checked} collections`);
+        }
+      })
+    );
   },
 };

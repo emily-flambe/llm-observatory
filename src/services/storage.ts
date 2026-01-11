@@ -44,6 +44,36 @@ export interface ModelSyncLog {
   error: string | null;
 }
 
+export interface Collection {
+  id: string;
+  topic_id: string;
+  template_id: string;
+  prompt_text: string;
+  display_name: string | null;
+  created_at: string;
+  last_run_at: string | null;
+}
+
+export interface CollectionVersion {
+  id: string;
+  collection_id: string;
+  version: number;
+  schedule_type: 'daily' | 'weekly' | 'monthly' | 'custom' | null;
+  cron_expression: string | null;
+  is_paused: number;
+  created_at: string;
+}
+
+export interface CollectionWithDetails extends Collection {
+  topic_name: string;
+  template_name: string;
+  current_version: number;
+  model_count: number;
+  schedule_type: 'daily' | 'weekly' | 'monthly' | 'custom' | null;
+  cron_expression: string | null;
+  is_paused: number;
+}
+
 // Topics
 
 export async function getTopics(db: D1Database): Promise<Topic[]> {
@@ -274,4 +304,273 @@ export async function getModelSyncLogs(
     .bind(limit)
     .all<ModelSyncLog>();
   return result.results;
+}
+
+// Collections
+
+export async function getCollections(db: D1Database): Promise<CollectionWithDetails[]> {
+  const result = await db
+    .prepare(`
+      SELECT
+        c.id,
+        c.topic_id,
+        c.template_id,
+        c.prompt_text,
+        c.display_name,
+        c.created_at,
+        c.last_run_at,
+        t.name as topic_name,
+        pt.name as template_name,
+        cv.version as current_version,
+        cv.schedule_type,
+        cv.cron_expression,
+        cv.is_paused,
+        (SELECT COUNT(*) FROM collection_version_models cvm WHERE cvm.collection_version_id = cv.id) as model_count
+      FROM collections c
+      LEFT JOIN topics t ON c.topic_id = t.id
+      LEFT JOIN prompt_templates pt ON c.template_id = pt.id
+      LEFT JOIN collection_versions cv ON cv.collection_id = c.id
+        AND cv.version = (SELECT MAX(version) FROM collection_versions WHERE collection_id = c.id)
+      ORDER BY c.created_at DESC
+    `)
+    .all<CollectionWithDetails>();
+  return result.results;
+}
+
+export async function getCollection(
+  db: D1Database,
+  id: string
+): Promise<CollectionWithDetails | null> {
+  const result = await db
+    .prepare(`
+      SELECT
+        c.id,
+        c.topic_id,
+        c.template_id,
+        c.prompt_text,
+        c.display_name,
+        c.created_at,
+        c.last_run_at,
+        t.name as topic_name,
+        pt.name as template_name,
+        cv.version as current_version,
+        cv.schedule_type,
+        cv.cron_expression,
+        cv.is_paused,
+        (SELECT COUNT(*) FROM collection_version_models cvm WHERE cvm.collection_version_id = cv.id) as model_count
+      FROM collections c
+      LEFT JOIN topics t ON c.topic_id = t.id
+      LEFT JOIN prompt_templates pt ON c.template_id = pt.id
+      LEFT JOIN collection_versions cv ON cv.collection_id = c.id
+        AND cv.version = (SELECT MAX(version) FROM collection_versions WHERE collection_id = c.id)
+      WHERE c.id = ?
+    `)
+    .bind(id)
+    .first<CollectionWithDetails>();
+  return result ?? null;
+}
+
+export async function getCollectionByTopicAndTemplate(
+  db: D1Database,
+  topicId: string,
+  templateId: string
+): Promise<Collection | null> {
+  const result = await db
+    .prepare('SELECT * FROM collections WHERE topic_id = ? AND template_id = ?')
+    .bind(topicId, templateId)
+    .first<Collection>();
+  return result ?? null;
+}
+
+export async function createCollection(
+  db: D1Database,
+  collection: {
+    topic_id: string;
+    template_id: string;
+    prompt_text: string;
+    display_name?: string;
+    model_ids: string[];
+  }
+): Promise<{ collection: Collection; version: CollectionVersion }> {
+  const collectionId = crypto.randomUUID();
+  const versionId = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  // Create collection
+  await db
+    .prepare(
+      'INSERT INTO collections (id, topic_id, template_id, prompt_text, display_name, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    )
+    .bind(
+      collectionId,
+      collection.topic_id,
+      collection.template_id,
+      collection.prompt_text,
+      collection.display_name ?? null,
+      now
+    )
+    .run();
+
+  // Create initial version (version 1, no schedule)
+  await db
+    .prepare(
+      'INSERT INTO collection_versions (id, collection_id, version, schedule_type, cron_expression, is_paused, created_at) VALUES (?, ?, 1, NULL, NULL, 0, ?)'
+    )
+    .bind(versionId, collectionId, now)
+    .run();
+
+  // Add models to version
+  for (const modelId of collection.model_ids) {
+    await db
+      .prepare(
+        'INSERT INTO collection_version_models (collection_version_id, model_id) VALUES (?, ?)'
+      )
+      .bind(versionId, modelId)
+      .run();
+  }
+
+  const createdCollection: Collection = {
+    id: collectionId,
+    topic_id: collection.topic_id,
+    template_id: collection.template_id,
+    prompt_text: collection.prompt_text,
+    display_name: collection.display_name ?? null,
+    created_at: now,
+    last_run_at: null,
+  };
+
+  const createdVersion: CollectionVersion = {
+    id: versionId,
+    collection_id: collectionId,
+    version: 1,
+    schedule_type: null,
+    cron_expression: null,
+    is_paused: 0,
+    created_at: now,
+  };
+
+  return { collection: createdCollection, version: createdVersion };
+}
+
+export async function getCollectionVersionModels(
+  db: D1Database,
+  collectionId: string
+): Promise<string[]> {
+  // Get the current version's models
+  const result = await db
+    .prepare(`
+      SELECT cvm.model_id
+      FROM collection_version_models cvm
+      JOIN collection_versions cv ON cv.id = cvm.collection_version_id
+      WHERE cv.collection_id = ?
+        AND cv.version = (SELECT MAX(version) FROM collection_versions WHERE collection_id = ?)
+    `)
+    .bind(collectionId, collectionId)
+    .all<{ model_id: string }>();
+  return result.results.map((r) => r.model_id);
+}
+
+export async function getCollectionVersions(
+  db: D1Database,
+  collectionId: string
+): Promise<CollectionVersion[]> {
+  const result = await db
+    .prepare('SELECT * FROM collection_versions WHERE collection_id = ? ORDER BY version DESC')
+    .bind(collectionId)
+    .all<CollectionVersion>();
+  return result.results;
+}
+
+export async function updateCollection(
+  db: D1Database,
+  id: string,
+  updates: {
+    display_name?: string;
+    model_ids?: string[];
+    schedule_type?: 'daily' | 'weekly' | 'monthly' | 'custom' | null;
+    cron_expression?: string | null;
+    is_paused?: boolean;
+  }
+): Promise<{ collection: CollectionWithDetails | null; new_version: boolean }> {
+  const collection = await getCollection(db, id);
+  if (!collection) {
+    return { collection: null, new_version: false };
+  }
+
+  // Update display_name on collection if provided
+  if (updates.display_name !== undefined) {
+    await db
+      .prepare('UPDATE collections SET display_name = ? WHERE id = ?')
+      .bind(updates.display_name, id)
+      .run();
+  }
+
+  // Check if we need a new version (models or schedule changed)
+  const currentModels = await getCollectionVersionModels(db, id);
+  const modelsChanged =
+    updates.model_ids !== undefined &&
+    (updates.model_ids.length !== currentModels.length ||
+      !updates.model_ids.every((m) => currentModels.includes(m)));
+
+  const scheduleChanged =
+    updates.schedule_type !== undefined ||
+    updates.cron_expression !== undefined ||
+    updates.is_paused !== undefined;
+
+  let newVersion = false;
+
+  if (modelsChanged || scheduleChanged) {
+    // Create new version
+    const newVersionNumber = collection.current_version + 1;
+    const versionId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await db
+      .prepare(
+        'INSERT INTO collection_versions (id, collection_id, version, schedule_type, cron_expression, is_paused, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      )
+      .bind(
+        versionId,
+        id,
+        newVersionNumber,
+        updates.schedule_type ?? collection.schedule_type,
+        updates.cron_expression ?? collection.cron_expression,
+        updates.is_paused !== undefined ? (updates.is_paused ? 1 : 0) : collection.is_paused,
+        now
+      )
+      .run();
+
+    // Add models to new version
+    const modelsToAdd = updates.model_ids ?? currentModels;
+    for (const modelId of modelsToAdd) {
+      await db
+        .prepare(
+          'INSERT INTO collection_version_models (collection_version_id, model_id) VALUES (?, ?)'
+        )
+        .bind(versionId, modelId)
+        .run();
+    }
+
+    newVersion = true;
+  }
+
+  const updated = await getCollection(db, id);
+  return { collection: updated, new_version: newVersion };
+}
+
+export async function deleteCollection(db: D1Database, id: string): Promise<boolean> {
+  // Due to ON DELETE CASCADE, this will also delete versions and version_models
+  const result = await db.prepare('DELETE FROM collections WHERE id = ?').bind(id).run();
+  return result.meta.changes > 0;
+}
+
+export async function updateCollectionLastRunAt(
+  db: D1Database,
+  id: string
+): Promise<void> {
+  const now = new Date().toISOString();
+  await db
+    .prepare('UPDATE collections SET last_run_at = ? WHERE id = ?')
+    .bind(now, id)
+    .run();
 }

@@ -7,7 +7,7 @@ import { LLMError } from '../types';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
+(globalThis as unknown as { fetch: typeof fetch }).fetch = mockFetch;
 
 describe('OpenAIProvider', () => {
   const provider = new OpenAIProvider('test-openai', 'gpt-4o', 'test-api-key');

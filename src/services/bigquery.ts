@@ -16,7 +16,7 @@ export interface BigQueryRow {
   id: string;
   prompt_id: string; // groups all responses from a single prompt submission
   collected_at: string; // ISO timestamp
-  source: 'collect' | 'prompt-lab'; // where the response came from
+  source: 'collect' | 'prompt-lab' | 'collection'; // where the response came from
   company: string; // provider like "openai", "anthropic"
   product: string; // family like "gpt", "claude"
   model: string; // specific model like "gpt-4o"
@@ -31,6 +31,8 @@ export interface BigQueryRow {
   output_tokens: number;
   error: string | null;
   success: boolean;
+  collection_id?: string | null; // reference to D1 collection
+  collection_version?: number | null; // version at time of collection
 }
 
 export interface QueryResult {
@@ -317,6 +319,8 @@ export async function insertRow(
               output_tokens: row.output_tokens,
               error: row.error,
               success: row.success,
+              collection_id: row.collection_id ?? null,
+              collection_version: row.collection_version ?? null,
             },
           },
         ],
@@ -452,7 +456,9 @@ export async function queryResponses(
 
       return {
         id: getValue('id') ?? '',
+        prompt_id: getValue('prompt_id') ?? '',
         collected_at: getValue('collected_at') ?? '',
+        source: (getValue('source') as 'collect' | 'prompt-lab' | 'collection') ?? 'collect',
         company: getValue('company') ?? '',
         product: getValue('product') ?? '',
         model: getValue('model') ?? '',
@@ -467,6 +473,10 @@ export async function queryResponses(
         output_tokens: parseInt(getValue('output_tokens') ?? '0', 10),
         error: getValue('error'),
         success: getValue('success') === 'true',
+        collection_id: getValue('collection_id'),
+        collection_version: getValue('collection_version')
+          ? parseInt(getValue('collection_version')!, 10)
+          : null,
       };
     });
 

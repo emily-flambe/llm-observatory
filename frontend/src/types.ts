@@ -100,3 +100,25 @@ export interface PromptLabQuery {
 export interface PromptsResponse {
   prompts: PromptLabQuery[];
 }
+
+// Collection types
+export interface Collection {
+  id: string;
+  topic_id: string;
+  template_id: string;
+  prompt_text: string;
+  display_name: string | null;
+  created_at: string;
+  last_run_at: string | null;
+  topic_name: string;
+  template_name: string;
+  current_version: number;
+  model_count: number;
+  schedule_type: 'daily' | 'weekly' | 'monthly' | 'custom' | null;
+  cron_expression: string | null;
+  is_paused: number;
+}
+
+export interface CollectionsResponse {
+  collections: Collection[];
+}

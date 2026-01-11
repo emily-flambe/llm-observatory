@@ -14,7 +14,7 @@ import Landing from './pages/Landing';
 import PromptLab from './pages/PromptLab';
 import { parseBigQueryTimestamp } from './utils/date';
 import { renderMarkdown } from './utils/markdown';
-import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse } from './types';
+import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection, CollectionsResponse } from './types';
 
 function CollectPage({ onCollectionComplete }: { onCollectionComplete: () => void }) {
   return (
@@ -85,14 +85,24 @@ function BrowseNav() {
         Topics
       </NavLink>
       <NavLink
-        to="/browse/prompt-history"
+        to="/browse/prompts"
         className={({ isActive }) =>
           `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
             isActive ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
           }`
         }
       >
-        Prompt History
+        Prompts
+      </NavLink>
+      <NavLink
+        to="/browse/collections"
+        className={({ isActive }) =>
+          `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
+            isActive ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
+          }`
+        }
+      >
+        Collections
       </NavLink>
     </div>
   );
@@ -163,8 +173,10 @@ function MultiSelect({
   options,
   selected,
   onChange,
-  getLabel = (o) => o,
-  getValue = (o) => o,
+  getLabel = (o: string | { label: string; value: string }) =>
+    typeof o === 'string' ? o : o.label,
+  getValue = (o: string | { label: string; value: string }) =>
+    typeof o === 'string' ? o : o.value,
 }: {
   label: string;
   options: string[] | { label: string; value: string }[];
@@ -231,7 +243,7 @@ function MultiSelect({
   );
 }
 
-function PromptHistoryContent({
+function PromptsContent({
   filters,
   models,
   topics,
@@ -267,9 +279,9 @@ function PromptHistoryContent({
 
     fetch(`/api/prompts?${params}`)
       .then(async (res) => {
-        const data = await res.json();
+        const data = (await res.json()) as { error?: string } & PromptsResponse;
         if (!res.ok) throw new Error(data.error || 'Failed to load prompts');
-        return data as PromptsResponse;
+        return data;
       })
       .then((data) => {
         setPrompts(data.prompts || []);
@@ -372,7 +384,7 @@ function PromptHistoryContent({
   );
 }
 
-function BrowsePromptHistoryPage() {
+function BrowsePromptsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [models, setModels] = useState<Model[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -415,13 +427,110 @@ function BrowsePromptHistoryPage() {
   return (
     <div>
       <BrowseNav />
-      <PromptHistoryContent
+      <PromptsContent
         key={filterKey}
         filters={filters}
         models={models}
         topics={topics}
         onFilterChange={handleFilterChange}
       />
+    </div>
+  );
+}
+
+function CollectionCard({ collection }: { collection: Collection }) {
+  const lastRunDate = collection.last_run_at ? parseBigQueryTimestamp(collection.last_run_at) : null;
+  const displayName = collection.display_name || `${collection.topic_name} - ${collection.template_name}`;
+
+  // Determine status
+  let status: { label: string; color: string; icon: string };
+  if (!collection.schedule_type) {
+    status = { label: 'Manual', color: 'text-ink-muted', icon: '○' };
+  } else if (collection.is_paused) {
+    status = { label: 'Paused', color: 'text-amber', icon: '⏸' };
+  } else {
+    status = { label: 'Active', color: 'text-green-600', icon: '●' };
+  }
+
+  // Format schedule
+  const formatSchedule = () => {
+    if (!collection.schedule_type) return 'No schedule';
+    if (collection.schedule_type === 'custom') return collection.cron_expression || 'Custom';
+    return collection.schedule_type.charAt(0).toUpperCase() + collection.schedule_type.slice(1);
+  };
+
+  return (
+    <div className="bg-white border border-border rounded-lg p-4 hover:border-amber transition-colors">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="font-medium text-ink truncate">{displayName}</h3>
+            <span className={`text-xs ${status.color}`}>
+              {status.icon} {status.label}
+            </span>
+          </div>
+          <p className="text-sm text-ink-muted mt-1 line-clamp-2">{collection.prompt_text}</p>
+          <div className="mt-2 flex items-center gap-3 text-xs text-ink-muted">
+            <span>{collection.model_count} model{collection.model_count !== 1 ? 's' : ''}</span>
+            <span>·</span>
+            <span>{formatSchedule()}</span>
+            {lastRunDate && (
+              <>
+                <span>·</span>
+                <span>Last run: {lastRunDate.toLocaleDateString()} {lastRunDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} UTC</span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BrowseCollectionsPage() {
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/collections')
+      .then(async (res) => {
+        const data = (await res.json()) as { error?: string } & CollectionsResponse;
+        if (!res.ok) throw new Error(data.error || 'Failed to load collections');
+        return data;
+      })
+      .then((data) => {
+        setCollections(data.collections || []);
+        setError(null);
+      })
+      .catch((err: Error) => {
+        setError(err.message);
+        setCollections([]);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div>
+      <BrowseNav />
+      {loading ? (
+        <div className="text-center py-20 text-ink-muted">Loading collections...</div>
+      ) : error ? (
+        <div className="text-center py-20">
+          <div className="text-error mb-2">Failed to load collections</div>
+          <div className="text-sm text-ink-muted">{error}</div>
+        </div>
+      ) : collections.length === 0 ? (
+        <div className="text-center py-20 text-ink-muted">
+          No collections yet. Use the Collect page to create your first collection.
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {collections.map((collection) => (
+            <CollectionCard key={collection.id} collection={collection} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -492,6 +601,23 @@ function Layout({ children, loadTopics }: { children: React.ReactNode; loadTopic
                 Browse
               </NavLink>
             </nav>
+            <a
+              href="https://github.com/emily-flambe/llm-observatory"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-4 text-ink-muted hover:text-ink transition-colors"
+              aria-label="View on GitHub"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="24"
+                height="24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+              </svg>
+            </a>
           </div>
         </div>
       </header>
@@ -509,11 +635,11 @@ export default function App() {
   const loadTopics = () => {
     fetch('/api/topics-with-responses')
       .then(async (res) => {
-        const data = await res.json();
+        const data = (await res.json()) as { error?: string } & TopicsResponse;
         if (!res.ok) {
           throw new Error(data.error || 'Failed to load topics');
         }
-        return data as TopicsResponse;
+        return data;
       })
       .then((data) => {
         setTopics(data.topics || []);
@@ -550,7 +676,8 @@ export default function App() {
               )
             }
           />
-          <Route path="/browse/prompt-history" element={<BrowsePromptHistoryPage />} />
+          <Route path="/browse/prompts" element={<BrowsePromptsPage />} />
+          <Route path="/browse/collections" element={<BrowseCollectionsPage />} />
         </Routes>
       </Layout>
     </BrowserRouter>
