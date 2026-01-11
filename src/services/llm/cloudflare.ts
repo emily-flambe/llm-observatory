@@ -1,13 +1,6 @@
 import type { LLMProvider, LLMRequest, LLMResponse } from './types';
 import { LLMError } from './types';
-
-/**
- * Estimate token count from text using character-based heuristic.
- * Average of ~4 characters per token for English text.
- */
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
+import { estimateTokens } from './tokens';
 
 export class CloudflareProvider implements LLMProvider {
   constructor(

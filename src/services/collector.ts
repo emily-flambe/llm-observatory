@@ -1,6 +1,7 @@
 import type { Env } from '../types/env';
 import { getModel, getPromptTemplate } from './storage';
 import { insertRow, extractProductFamily, extractCompany, type BigQueryRow } from './bigquery';
+import { estimateTokens } from './llm/tokens';
 
 export interface CollectionResult {
   success: boolean;
@@ -261,14 +262,6 @@ async function callGoogle(prompt: string, model: string, apiKey: string): Promis
     inputTokens: data.usageMetadata?.promptTokenCount ?? null,
     outputTokens: data.usageMetadata?.candidatesTokenCount ?? null,
   };
-}
-
-/**
- * Estimate token count from text using character-based heuristic.
- * Average of ~4 characters per token for English text.
- */
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
 }
 
 async function callCloudflare(prompt: string, model: string, ai: Ai): Promise<LLMResponse> {
