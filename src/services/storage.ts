@@ -392,6 +392,8 @@ export async function createCollection(
     prompt_text: string;
     display_name?: string;
     model_ids: string[];
+    schedule_type?: 'daily' | 'weekly' | 'monthly' | 'custom' | null;
+    cron_expression?: string | null;
   }
 ): Promise<{ collection: Collection; version: CollectionVersion }> {
   const collectionId = crypto.randomUUID();
@@ -413,12 +415,12 @@ export async function createCollection(
     )
     .run();
 
-  // Create initial version (version 1, no schedule)
+  // Create initial version (version 1, with optional schedule)
   await db
     .prepare(
-      'INSERT INTO collection_versions (id, collection_id, version, schedule_type, cron_expression, is_paused, created_at) VALUES (?, ?, 1, NULL, NULL, 0, ?)'
+      'INSERT INTO collection_versions (id, collection_id, version, schedule_type, cron_expression, is_paused, created_at) VALUES (?, ?, 1, ?, ?, 0, ?)'
     )
-    .bind(versionId, collectionId, now)
+    .bind(versionId, collectionId, collection.schedule_type ?? null, collection.cron_expression ?? null, now)
     .run();
 
   // Add models to version
@@ -445,8 +447,8 @@ export async function createCollection(
     id: versionId,
     collection_id: collectionId,
     version: 1,
-    schedule_type: null,
-    cron_expression: null,
+    schedule_type: collection.schedule_type ?? null,
+    cron_expression: collection.cron_expression ?? null,
     is_paused: 0,
     created_at: now,
   };
