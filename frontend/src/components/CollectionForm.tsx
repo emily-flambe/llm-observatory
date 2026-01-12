@@ -11,6 +11,22 @@ import type {
 } from '../types';
 import ModelSelector from './ModelSelector';
 
+// Helper to safely extract error message from response
+async function getErrorMessage(res: Response, defaultMsg: string): Promise<string> {
+  try {
+    const text = await res.text();
+    try {
+      const json = JSON.parse(text) as { error?: string };
+      return json.error || defaultMsg;
+    } catch {
+      // Response was not JSON, return as-is or default
+      return text || defaultMsg;
+    }
+  } catch {
+    return defaultMsg;
+  }
+}
+
 interface CollectionFormProps {
   onCollectionComplete?: () => void;
   editId?: string;
@@ -189,8 +205,8 @@ export default function CollectionForm({ onCollectionComplete, editId }: Collect
         body: JSON.stringify(customTemplate),
       });
       if (!res.ok) {
-        const data = await res.json() as { error?: string };
-        throw new Error(data.error || 'Failed to create template');
+        const errMsg = await getErrorMessage(res, 'Failed to create template');
+        throw new Error(errMsg);
       }
       const { template } = await res.json() as { template: PromptTemplate };
       setTemplates([...templates, template]);
@@ -249,8 +265,8 @@ export default function CollectionForm({ onCollectionComplete, editId }: Collect
         });
 
         if (!updateRes.ok) {
-          const err = await updateRes.json() as { error?: string };
-          throw new Error(err.error || 'Failed to update collection');
+          const errMsg = await getErrorMessage(updateRes, 'Failed to update collection');
+          throw new Error(errMsg);
         }
 
         collectionId = editId;
@@ -273,8 +289,8 @@ export default function CollectionForm({ onCollectionComplete, editId }: Collect
         });
 
         if (!createRes.ok) {
-          const err = await createRes.json() as { error?: string };
-          throw new Error(err.error || 'Failed to create collection');
+          const errMsg = await getErrorMessage(createRes, 'Failed to create collection');
+          throw new Error(errMsg);
         }
 
         const { collection } = await createRes.json() as { collection: { id: string } };
@@ -301,8 +317,8 @@ export default function CollectionForm({ onCollectionComplete, editId }: Collect
         });
 
         if (!runRes.ok) {
-          const err = await runRes.json() as { error?: string };
-          addLog(`✗ Run failed: ${err.error || 'Unknown error'}`);
+          const errMsg = await getErrorMessage(runRes, 'Unknown error');
+          addLog(`✗ Run failed: ${errMsg}`);
           continue;
         }
 
