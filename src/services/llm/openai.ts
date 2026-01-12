@@ -24,6 +24,12 @@ export class OpenAIProvider implements LLMProvider {
     const maxTokens = request.maxTokens ?? 1024;
     const temperature = request.temperature ?? 0.7;
 
+    // Newer models (o1, o3, gpt-5+) use max_completion_tokens instead of max_tokens
+    const usesCompletionTokens =
+      this.modelName.startsWith('o1') ||
+      this.modelName.startsWith('o3') ||
+      this.modelName.startsWith('gpt-5');
+
     const startTime = Date.now();
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -35,7 +41,9 @@ export class OpenAIProvider implements LLMProvider {
       body: JSON.stringify({
         model: this.modelName,
         messages: [{ role: 'user', content: request.prompt }],
-        max_tokens: maxTokens,
+        ...(usesCompletionTokens
+          ? { max_completion_tokens: maxTokens }
+          : { max_tokens: maxTokens }),
         temperature,
       }),
     });

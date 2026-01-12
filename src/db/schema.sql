@@ -57,3 +57,33 @@ CREATE TABLE IF NOT EXISTS rate_limits (
     request_count INTEGER DEFAULT 0,
     PRIMARY KEY (date, endpoint)
 );
+
+-- Collections: reusable prompt configurations that can run on a schedule
+CREATE TABLE IF NOT EXISTS collections (
+    id TEXT PRIMARY KEY,                                          -- UUID
+    topic_id TEXT NOT NULL REFERENCES topics(id),
+    template_id TEXT NOT NULL REFERENCES prompt_templates(id),
+    prompt_text TEXT NOT NULL,                                    -- Rendered prompt (immutable snapshot)
+    display_name TEXT,                                            -- Optional custom name, null = auto-generate
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_run_at TEXT                                              -- Updated after each run
+);
+
+-- Collection versions: versioned mutable configuration (models, schedule)
+CREATE TABLE IF NOT EXISTS collection_versions (
+    id TEXT PRIMARY KEY,                                          -- UUID
+    collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    schedule_type TEXT,                                           -- 'daily' | 'weekly' | 'monthly' | 'custom' | null
+    cron_expression TEXT,                                         -- UTC cron, null if no schedule
+    is_paused INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(collection_id, version)
+);
+
+-- Models assigned to each collection version
+CREATE TABLE IF NOT EXISTS collection_version_models (
+    collection_version_id TEXT NOT NULL REFERENCES collection_versions(id) ON DELETE CASCADE,
+    model_id TEXT NOT NULL REFERENCES models(id),
+    PRIMARY KEY (collection_version_id, model_id)
+);

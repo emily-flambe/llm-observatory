@@ -32,9 +32,11 @@ database_id = "43f364e4-fd30-4ddf-b068-de171232eddf"
 [dev]
 port = 8787
 
-# Daily model sync at 6 AM UTC
+# Cron triggers:
+# - Daily model sync at 6 AM UTC
+# - Hourly collection scheduler at :00
 [triggers]
-crons = ["0 6 * * *"]
+crons = ["0 6 * * *", "0 * * * *"]
 
 [observability]
 enabled = true
