@@ -1012,22 +1012,22 @@ export async function getCollectionResponses(
       const collected_at = row.f[4].v as string;
       const responsesArray = row.f[5].v as Array<{ v: { f: Array<{ v: unknown }> } }>;
 
-      const responses = responsesArray.map((r) => {
+      const responses = (responsesArray ?? []).map((r) => {
         const f = r.v.f;
-        const inputCostVal = f[8].v;
-        const outputCostVal = f[9].v;
+        const inputCostVal = f[7].v as string | null;
+        const outputCostVal = f[8].v as string | null;
         return {
           id: f[0].v as string,
           model: f[1].v as string,
           company: f[2].v as string,
           response: f[3].v as string | null,
-          latency_ms: parseInt(f[4].v as string, 10),
-          input_tokens: parseInt(f[5].v as string, 10),
-          output_tokens: parseInt(f[6].v as string, 10),
-          input_cost: inputCostVal ? parseFloat(inputCostVal as string) : null,
-          output_cost: outputCostVal ? parseFloat(outputCostVal as string) : null,
-          error: f[10].v as string | null,
-          success: f[11].v === true || f[11].v === 'true',
+          latency_ms: parseInt(f[4].v as string, 10) || 0,
+          input_tokens: parseInt(f[5].v as string, 10) || 0,
+          output_tokens: parseInt(f[6].v as string, 10) || 0,
+          input_cost: inputCostVal ? parseFloat(inputCostVal) : null,
+          output_cost: outputCostVal ? parseFloat(outputCostVal) : null,
+          error: f[9].v as string | null,
+          success: f[10].v === true || f[10].v === 'true',
         };
       });
 
