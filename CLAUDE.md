@@ -14,6 +14,8 @@ make deploy     # Deploy to Cloudflare
 
 ## Git Workflow
 
+**Main branch is protected.** All changes require a pull request - you cannot push directly to main.
+
 **ALWAYS use git worktrees for ALL work.** Never work directly on the main repository directory.
 
 ```bash
@@ -25,6 +27,12 @@ cp ../llm-observatory/.dev.vars .dev.vars  # CRITICAL: Copy AFTER make setup (it
 ```
 
 **CRITICAL: Copy `.dev.vars` AFTER `make setup`.** The setup script copies `.dev.vars.example` which will overwrite your copy.
+
+When ready to merge, push your branch and create a PR:
+```bash
+git push -u origin feature-x
+gh pr create --fill
+```
 
 ## Database
 
