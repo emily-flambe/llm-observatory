@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -17,6 +17,12 @@ import { renderMarkdown } from './utils/markdown';
 import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection, CollectionsResponse } from './types';
 
 function CollectNavTabs() {
+  const pathname = window.location.pathname;
+  // Manage tab is active for /collect/manage, /collect/edit/*, and /collect/:id (but not /collect/create)
+  const isManageActive = pathname === '/collect/manage' ||
+    pathname.startsWith('/collect/edit') ||
+    (pathname.startsWith('/collect/') && pathname !== '/collect/create' && !pathname.startsWith('/collect/edit'));
+
   return (
     <div className="flex gap-1 mb-6 border-b border-border">
       <NavLink
@@ -32,11 +38,9 @@ function CollectNavTabs() {
       <NavLink
         to="/collect/manage"
         end={false}
-        className={({ isActive }) => {
-          // Also highlight for /collect/edit/* routes
-          const isEditRoute = window.location.pathname.startsWith('/collect/edit');
+        className={() => {
           return `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
-            isActive || isEditRoute ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
+            isManageActive ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
           }`;
         }}
       >
@@ -65,22 +69,7 @@ function CollectEditPage() {
   );
 }
 
-function ManageCollectionCard({
-  collection,
-  onRunNow,
-  onTogglePause,
-  onDelete,
-  onRestore,
-  isRunning,
-}: {
-  collection: Collection;
-  onRunNow: (id: string) => void;
-  onTogglePause: (id: string, pause: boolean) => void;
-  onDelete: (id: string) => void;
-  onRestore: (id: string) => void;
-  isRunning: boolean;
-}) {
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+function ManageCollectionCard({ collection }: { collection: Collection }) {
   const lastRunDate = collection.last_run_at ? parseBigQueryTimestamp(collection.last_run_at) : null;
   const displayName = collection.display_name || `${collection.topic_name} - ${collection.template_name}`;
   const isDisabled = collection.disabled === 1;
@@ -103,7 +92,10 @@ function ManageCollectionCard({
   };
 
   return (
-    <div className={`bg-white border border-border rounded-lg p-4 ${isDisabled ? 'opacity-60' : ''}`}>
+    <Link
+      to={`/collect/${collection.id}`}
+      className={`block bg-white border border-border rounded-lg p-4 hover:border-amber transition-colors ${isDisabled ? 'opacity-60' : ''}`}
+    >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -125,74 +117,9 @@ function ManageCollectionCard({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {isDisabled ? (
-            <button
-              onClick={() => onRestore(collection.id)}
-              className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
-            >
-              Restore
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={() => onRunNow(collection.id)}
-                disabled={isRunning}
-                className="px-2 py-1 text-xs bg-amber text-white rounded hover:bg-amber-dark disabled:opacity-50"
-              >
-                {isRunning ? 'Running...' : 'Run Now'}
-              </button>
-              {collection.schedule_type && (
-                <button
-                  onClick={() => onTogglePause(collection.id, !collection.is_paused)}
-                  className="px-2 py-1 text-xs border border-border rounded hover:bg-paper-dark"
-                >
-                  {collection.is_paused ? 'Resume' : 'Pause'}
-                </button>
-              )}
-              <Link
-                to={`/browse/collections/${collection.id}`}
-                className="px-2 py-1 text-xs border border-border rounded hover:bg-paper-dark"
-              >
-                History
-              </Link>
-              <Link
-                to={`/collect/edit/${collection.id}`}
-                className="px-2 py-1 text-xs border border-border rounded hover:bg-paper-dark"
-              >
-                Edit
-              </Link>
-              {!showDeleteConfirm ? (
-                <button
-                  onClick={() => setShowDeleteConfirm(true)}
-                  className="px-2 py-1 text-xs text-error border border-error/30 rounded hover:bg-red-50"
-                >
-                  Delete
-                </button>
-              ) : (
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => {
-                      onDelete(collection.id);
-                      setShowDeleteConfirm(false);
-                    }}
-                    className="px-2 py-1 text-xs bg-error text-white rounded"
-                  >
-                    Confirm
-                  </button>
-                  <button
-                    onClick={() => setShowDeleteConfirm(false)}
-                    className="px-2 py-1 text-xs border border-border rounded"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+        <span className="text-xs text-ink-muted shrink-0">View →</span>
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -200,12 +127,9 @@ function CollectManagePage() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState('');
-  const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [showDisabled, setShowDisabled] = useState(true);
+  const [showDisabled, setShowDisabled] = useState(false);
 
-  const loadCollections = () => {
+  useEffect(() => {
     fetch(`/api/collections?includeDisabled=${showDisabled}`)
       .then(async (res) => {
         const data = (await res.json()) as { error?: string } & CollectionsResponse;
@@ -221,133 +145,11 @@ function CollectManagePage() {
         setCollections([]);
       })
       .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    loadCollections();
   }, [showDisabled]);
-
-  const handleRunNow = async (id: string) => {
-    if (!apiKey) {
-      setActionError('Please enter an API key to run collections');
-      return;
-    }
-    setActionError(null);
-    setRunningIds((prev) => new Set(prev).add(id));
-
-    try {
-      const res = await fetch(`/api/admin/collections/${id}/run`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-      });
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to run collection');
-      }
-      loadCollections(); // Refresh to get updated last_run_at
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to run collection');
-    } finally {
-      setRunningIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
-  };
-
-  const handleTogglePause = async (id: string, pause: boolean) => {
-    if (!apiKey) {
-      setActionError('Please enter an API key to modify collections');
-      return;
-    }
-    setActionError(null);
-
-    try {
-      const res = await fetch(`/api/collections/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({ is_paused: pause }),
-      });
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to update collection');
-      }
-      loadCollections();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to update collection');
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!apiKey) {
-      setActionError('Please enter an API key to delete collections');
-      return;
-    }
-    setActionError(null);
-
-    try {
-      const res = await fetch(`/api/collections/${id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-      });
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to delete collection');
-      }
-      loadCollections();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to delete collection');
-    }
-  };
-
-  const handleRestore = async (id: string) => {
-    if (!apiKey) {
-      setActionError('Please enter an API key to restore collections');
-      return;
-    }
-    setActionError(null);
-
-    try {
-      const res = await fetch(`/api/collections/${id}/restore`, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-      });
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to restore collection');
-      }
-      loadCollections();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to restore collection');
-    }
-  };
 
   return (
     <div>
       <CollectNavTabs />
-
-      {/* API Key input for actions */}
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-ink mb-1">API Key (for actions)</label>
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder="Enter admin API key to run, pause, or delete"
-          className="w-full max-w-md rounded-lg px-3 py-2 text-sm border border-border focus:border-amber focus:ring-1 focus:ring-amber"
-        />
-      </div>
 
       {/* Show disabled toggle */}
       <div className="mb-4">
@@ -361,12 +163,6 @@ function CollectManagePage() {
           Show disabled collections
         </label>
       </div>
-
-      {actionError && (
-        <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 text-error text-sm">
-          {actionError}
-        </div>
-      )}
 
       {loading ? (
         <div className="text-center py-20 text-ink-muted">Loading collections...</div>
@@ -382,15 +178,7 @@ function CollectManagePage() {
       ) : (
         <div className="space-y-4">
           {collections.map((collection) => (
-            <ManageCollectionCard
-              key={collection.id}
-              collection={collection}
-              onRunNow={handleRunNow}
-              onTogglePause={handleTogglePause}
-              onDelete={handleDelete}
-              onRestore={handleRestore}
-              isRunning={runningIds.has(collection.id)}
-            />
+            <ManageCollectionCard key={collection.id} collection={collection} />
           ))}
         </div>
       )}
@@ -477,17 +265,7 @@ function BrowseNav() {
           }`
         }
       >
-        Prompts
-      </NavLink>
-      <NavLink
-        to="/browse/collections"
-        className={({ isActive }) =>
-          `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
-            isActive ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
-          }`
-        }
-      >
-        Collections
+        Prompt History
       </NavLink>
     </div>
   );
@@ -825,59 +603,6 @@ function BrowsePromptsPage() {
   );
 }
 
-function CollectionCard({ collection }: { collection: Collection }) {
-  const lastRunDate = collection.last_run_at ? parseBigQueryTimestamp(collection.last_run_at) : null;
-  const displayName = collection.display_name || `${collection.topic_name} - ${collection.template_name}`;
-
-  // Determine status
-  let status: { label: string; color: string; icon: string };
-  if (!collection.schedule_type) {
-    status = { label: 'Manual', color: 'text-ink-muted', icon: '○' };
-  } else if (collection.is_paused) {
-    status = { label: 'Paused', color: 'text-amber', icon: '⏸' };
-  } else {
-    status = { label: 'Active', color: 'text-green-600', icon: '●' };
-  }
-
-  // Format schedule
-  const formatSchedule = () => {
-    if (!collection.schedule_type) return 'No schedule';
-    if (collection.schedule_type === 'custom') return collection.cron_expression || 'Custom';
-    return collection.schedule_type.charAt(0).toUpperCase() + collection.schedule_type.slice(1);
-  };
-
-  return (
-    <Link
-      to={`/browse/collections/${collection.id}`}
-      className="block bg-white border border-border rounded-lg p-4 hover:border-amber transition-colors"
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="font-medium text-ink truncate">{displayName}</h3>
-            <span className={`text-xs ${status.color}`}>
-              {status.icon} {status.label}
-            </span>
-          </div>
-          <p className="text-sm text-ink-muted mt-1 line-clamp-2">{collection.prompt_text}</p>
-          <div className="mt-2 flex items-center gap-3 text-xs text-ink-muted">
-            <span>{collection.model_count} model{collection.model_count !== 1 ? 's' : ''}</span>
-            <span>·</span>
-            <span>{formatSchedule()}</span>
-            {lastRunDate && (
-              <>
-                <span>·</span>
-                <span>Last run: {lastRunDate.toLocaleDateString()} {lastRunDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} UTC</span>
-              </>
-            )}
-          </div>
-        </div>
-        <span className="text-xs text-ink-muted shrink-0">View &rarr;</span>
-      </div>
-    </Link>
-  );
-}
-
 function CollectionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [collection, setCollection] = useState<Collection | null>(null);
@@ -885,13 +610,18 @@ function CollectionDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedExecutions, setExpandedExecutions] = useState<Set<string>>(new Set());
+  const [apiKey, setApiKey] = useState('');
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [showDisableConfirm, setShowDisableConfirm] = useState(false);
 
-  useEffect(() => {
+  const loadData = useCallback(() => {
     if (!id) return;
 
     Promise.all([
       fetch(`/api/collections/${id}`).then((res) => res.json()) as Promise<{ error?: string; collection: Collection }>,
-      fetch(`/api/collections/${id}/responses`).then((res) => res.json()) as Promise<PromptsResponse>,
+      fetch(`/api/collections/${id}/responses`).then((res) => res.json()) as Promise<PromptsResponse & { error?: string }>,
     ])
       .then(([collectionData, responsesData]) => {
         if (collectionData.error) {
@@ -907,17 +637,19 @@ function CollectionDetailPage() {
       });
   }, [id]);
 
-  // Group responses by prompt_id (each prompt_id = one execution)
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
   const executionGroups = useMemo(() => {
     const groups = new Map<string, PromptLabQuery[]>();
     prompts.forEach((p) => {
-      const key = p.id; // prompt_id groups all responses from one execution
+      const key = p.id;
       if (!groups.has(key)) {
         groups.set(key, []);
       }
       groups.get(key)!.push(p);
     });
-    // Sort by collected_at descending (most recent first)
     return Array.from(groups.entries())
       .map(([promptId, queries]) => ({
         promptId,
@@ -925,7 +657,7 @@ function CollectionDetailPage() {
         collectedAt: queries[0]?.collected_at || '',
         responseCount: queries.reduce((acc, q) => acc + q.responses.length, 0),
       }))
-      .sort((a, b) => new Date(b.collectedAt).getTime() - new Date(a.collectedAt).getTime());
+      .sort((a, b) => parseBigQueryTimestamp(b.collectedAt).getTime() - parseBigQueryTimestamp(a.collectedAt).getTime());
   }, [prompts]);
 
   const toggleExecution = (promptId: string) => {
@@ -940,21 +672,127 @@ function CollectionDetailPage() {
     });
   };
 
+  const handleRunNow = async () => {
+    if (!apiKey || !id) {
+      setActionError('Please enter an API key to run collections');
+      return;
+    }
+    setActionError(null);
+    setActionSuccess(null);
+    setIsRunning(true);
+
+    try {
+      const res = await fetch(`/api/admin/collections/${id}/run`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        throw new Error(data.error || 'Failed to run collection');
+      }
+      setActionSuccess('Collection run completed successfully!');
+      loadData();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to run collection');
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const handleTogglePause = async () => {
+    if (!apiKey || !id || !collection) {
+      setActionError('Please enter an API key to modify collections');
+      return;
+    }
+    setActionError(null);
+    setActionSuccess(null);
+
+    try {
+      const res = await fetch(`/api/collections/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ is_paused: !collection.is_paused }),
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        throw new Error(data.error || 'Failed to update collection');
+      }
+      loadData();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to update collection');
+    }
+  };
+
+  const handleDisable = async () => {
+    if (!apiKey || !id) {
+      setActionError('Please enter an API key to disable collections');
+      return;
+    }
+    setActionError(null);
+    setActionSuccess(null);
+
+    try {
+      const res = await fetch(`/api/collections/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        throw new Error(data.error || 'Failed to disable collection');
+      }
+      loadData();
+      setShowDisableConfirm(false);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to disable collection');
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!apiKey || !id) {
+      setActionError('Please enter an API key to restore collections');
+      return;
+    }
+    setActionError(null);
+    setActionSuccess(null);
+
+    try {
+      const res = await fetch(`/api/collections/${id}/restore`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        throw new Error(data.error || 'Failed to restore collection');
+      }
+      loadData();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to restore collection');
+    }
+  };
+
   const formatSchedule = (scheduleType: string | null, cronExpression: string | null): string => {
     if (!scheduleType) return 'No schedule';
     if (scheduleType === 'custom' && cronExpression) return `Custom: ${cronExpression}`;
     return scheduleType.charAt(0).toUpperCase() + scheduleType.slice(1);
   };
 
-  const formatLocalTime = (isoString: string | null): string => {
-    if (!isoString) return 'Never';
-    return new Date(isoString).toLocaleString();
+  const formatLocalTime = (timestamp: string | null): string => {
+    if (!timestamp) return 'Never';
+    const date = parseBigQueryTimestamp(timestamp);
+    if (isNaN(date.getTime())) return 'Invalid date';
+    return date.toLocaleString();
   };
 
   if (loading) {
     return (
       <div>
-        <BrowseNav />
+        <CollectNavTabs />
         <div className="text-center py-20 text-ink-muted">Loading collection...</div>
       </div>
     );
@@ -963,12 +801,12 @@ function CollectionDetailPage() {
   if (error || !collection) {
     return (
       <div>
-        <BrowseNav />
+        <CollectNavTabs />
         <div className="text-center py-20">
           <div className="text-error mb-2">Failed to load collection</div>
           <div className="text-sm text-ink-muted">{error}</div>
-          <Link to="/browse/collections" className="text-amber hover:text-amber-dark text-sm mt-4 inline-block">
-            Back to Collections
+          <Link to="/collect/manage" className="text-amber hover:text-amber-dark text-sm mt-4 inline-block">
+            ← Back to Manage
           </Link>
         </div>
       </div>
@@ -976,62 +814,144 @@ function CollectionDetailPage() {
   }
 
   const displayName = collection.display_name || `${collection.topic_name} - ${collection.template_name}`;
+  const isDisabled = collection.disabled === 1;
+
+  let status: { label: string; color: string; icon: string };
+  if (isDisabled) {
+    status = { label: 'Disabled', color: 'text-ink-muted', icon: '⊘' };
+  } else if (!collection.schedule_type) {
+    status = { label: 'Manual', color: 'text-ink-muted', icon: '○' };
+  } else if (collection.is_paused) {
+    status = { label: 'Paused', color: 'text-amber', icon: '⏸' };
+  } else {
+    status = { label: 'Active', color: 'text-green-600', icon: '●' };
+  }
 
   return (
     <div>
-      <BrowseNav />
+      <CollectNavTabs />
 
-      {/* Collection Header */}
       <div className="mb-6">
-        <Link to="/browse/collections" className="text-sm text-amber hover:text-amber-dark mb-2 inline-block">
-          &larr; Back to Collections
+        <Link to="/collect/manage" className="text-sm text-amber hover:text-amber-dark mb-2 inline-block">
+          ← Back to Manage
         </Link>
-        <h2 className="text-xl font-semibold text-ink">{displayName}</h2>
-        <div className="flex items-center gap-4 mt-1 text-sm text-ink-muted">
-          <span>{collection.topic_name}</span>
-          <span>{collection.template_name}</span>
-          <span>{collection.model_count} models</span>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3">
+              <h2 className={`text-xl font-semibold ${isDisabled ? 'text-ink-muted line-through' : 'text-ink'}`}>
+                {displayName}
+              </h2>
+              <span className={`text-sm ${status.color}`}>
+                {status.icon} {status.label}
+              </span>
+            </div>
+            <p className="text-sm text-ink-muted mt-1">{collection.prompt_text}</p>
+          </div>
         </div>
       </div>
 
-      {/* Schedule & Status Info */}
       <div className="bg-paper-dark rounded-lg p-4 mb-6 border border-border">
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="API key for actions"
+            className="flex-1 min-w-[200px] max-w-xs rounded-lg px-3 py-2 text-sm border border-border focus:border-amber focus:ring-1 focus:ring-amber"
+          />
+          {isDisabled ? (
+            <button
+              onClick={handleRestore}
+              className="px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
+            >
+              Restore
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={handleRunNow}
+                disabled={isRunning}
+                className="px-3 py-2 text-sm bg-amber text-white rounded-lg hover:bg-amber-dark disabled:opacity-50"
+              >
+                {isRunning ? 'Running...' : 'Run Now'}
+              </button>
+              {collection.schedule_type && (
+                <button
+                  onClick={handleTogglePause}
+                  className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-white"
+                >
+                  {collection.is_paused ? 'Resume Schedule' : 'Pause Schedule'}
+                </button>
+              )}
+              <Link
+                to={`/collect/edit/${collection.id}`}
+                className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-white"
+              >
+                Edit
+              </Link>
+              {!showDisableConfirm ? (
+                <button
+                  onClick={() => setShowDisableConfirm(true)}
+                  className="px-3 py-2 text-sm text-error border border-error/30 rounded-lg hover:bg-red-50"
+                >
+                  Disable
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button onClick={handleDisable} className="px-3 py-2 text-sm bg-error text-white rounded-lg">
+                    Confirm Disable
+                  </button>
+                  <button
+                    onClick={() => setShowDisableConfirm(false)}
+                    className="px-3 py-2 text-sm border border-border rounded-lg"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {actionError && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-error text-sm mb-4">{actionError}</div>
+        )}
+        {actionSuccess && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-green-700 text-sm mb-4">{actionSuccess}</div>
+        )}
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
             <div className="text-ink-muted">Schedule</div>
-            <div className="font-medium text-ink">
-              {formatSchedule(collection.schedule_type, collection.cron_expression)}
-              {collection.is_paused ? ' (Paused)' : ''}
-            </div>
+            <div className="font-medium text-ink">{formatSchedule(collection.schedule_type, collection.cron_expression)}</div>
           </div>
           <div>
             <div className="text-ink-muted">Last Run</div>
             <div className="font-medium text-ink">{formatLocalTime(collection.last_run_at)}</div>
           </div>
           <div>
-            <div className="text-ink-muted">Total Executions</div>
-            <div className="font-medium text-ink">{executionGroups.length}</div>
+            <div className="text-ink-muted">Models</div>
+            <div className="font-medium text-ink">{collection.model_count}</div>
           </div>
           <div>
-            <div className="text-ink-muted">Created</div>
-            <div className="font-medium text-ink">{formatLocalTime(collection.created_at)}</div>
+            <div className="text-ink-muted">Executions</div>
+            <div className="font-medium text-ink">{executionGroups.length}</div>
           </div>
         </div>
       </div>
 
-      {/* Executions */}
+      <h3 className="text-lg font-medium text-ink mb-3">Execution History</h3>
       {executionGroups.length === 0 ? (
-        <div className="text-center py-20 text-ink-muted">
-          No responses collected yet. Run the collection from Collect &gt; Manage.
+        <div className="text-center py-12 text-ink-muted border border-border rounded-lg bg-paper">
+          No executions yet. Click "Run Now" to collect responses.
         </div>
       ) : (
         <div className="space-y-3">
-          <h3 className="text-lg font-medium text-ink">Execution History</h3>
           {executionGroups.map((group) => (
             <div key={group.promptId} className="border border-border rounded-lg overflow-hidden">
               <button
                 onClick={() => toggleExecution(group.promptId)}
-                className="w-full px-4 py-3 bg-paper-dark flex items-center justify-between hover:bg-paper-darker transition-colors"
+                className="w-full px-4 py-3 bg-paper-dark flex items-center justify-between hover:bg-paper-darker transition-colors text-left"
               >
                 <div className="flex items-center gap-4 text-sm">
                   <span className="font-medium text-ink">{formatLocalTime(group.collectedAt)}</span>
@@ -1040,150 +960,41 @@ function CollectionDetailPage() {
                 <span className="text-ink-muted">{expandedExecutions.has(group.promptId) ? '▼' : '▶'}</span>
               </button>
               {expandedExecutions.has(group.promptId) && (
-                <div className="p-4 space-y-4 bg-paper">
-                  {group.queries.map((query) => (
-                    <PromptCard key={query.id} query={query} />
-                  ))}
+                <div className="p-4 space-y-3 bg-white">
+                  {group.queries.flatMap((query) =>
+                    query.responses.map((resp, i) => (
+                      <div key={`${query.id}-${i}`} className="bg-paper rounded-lg p-4 border border-border">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-ink">{resp.model}</span>
+                            <span className="text-xs text-ink-muted">({resp.company})</span>
+                          </div>
+                          {resp.success && (
+                            <div className="flex items-center gap-3 text-xs text-ink-muted">
+                              <span>{resp.latency_ms}ms</span>
+                              {resp.input_tokens > 0 && <span>{resp.input_tokens + resp.output_tokens} tokens</span>}
+                              {(resp.input_cost !== null || resp.output_cost !== null) && (
+                                <span className="text-green-600">
+                                  ${((resp.input_cost || 0) + (resp.output_cost || 0)).toFixed(6)}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        {resp.success ? (
+                          <div
+                            className="text-sm text-ink markdown-content"
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(resp.response || '') }}
+                          />
+                        ) : (
+                          <p className="text-sm text-error">{resp.error}</p>
+                        )}
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
             </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function BrowseCollectionsPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [collections, setCollections] = useState<Collection[]>([]);
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Parse comma-separated values from URL
-  const parseArray = (param: string | null): string[] =>
-    param ? param.split(',').filter(Boolean) : [];
-
-  const filters = {
-    search: searchParams.get('search') || '',
-    topics: parseArray(searchParams.get('topics')),
-  };
-
-  const [searchInput, setSearchInput] = useState(filters.search);
-
-  useEffect(() => {
-    Promise.all([
-      fetch('/api/collections').then((r) => r.json() as Promise<CollectionsResponse>),
-      fetch('/api/topics').then((r) => r.json() as Promise<TopicsResponse>),
-    ])
-      .then(([collectionsData, topicsData]) => {
-        setCollections(collectionsData.collections || []);
-        setTopics(topicsData.topics || []);
-        setError(null);
-      })
-      .catch((err: Error) => {
-        setError(err.message);
-        setCollections([]);
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  const handleFilterChange = (newFilters: Partial<typeof filters>) => {
-    const updated = { ...filters, ...newFilters };
-    const params = new URLSearchParams();
-    if (updated.search) params.set('search', updated.search);
-    if (updated.topics.length > 0) params.set('topics', updated.topics.join(','));
-    setSearchParams(params);
-  };
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    handleFilterChange({ search: searchInput });
-  };
-
-  // Filter collections client-side
-  const filteredCollections = collections.filter((c) => {
-    // Search filter - match topic name, template name, or prompt text
-    if (filters.search) {
-      const search = filters.search.toLowerCase();
-      const matchesSearch =
-        c.topic_name?.toLowerCase().includes(search) ||
-        c.template_name?.toLowerCase().includes(search) ||
-        c.prompt_text?.toLowerCase().includes(search) ||
-        c.display_name?.toLowerCase().includes(search);
-      if (!matchesSearch) return false;
-    }
-    // Topic filter
-    if (filters.topics.length > 0 && !filters.topics.includes(c.topic_id)) {
-      return false;
-    }
-    return true;
-  });
-
-  const hasActiveFilters = filters.topics.length > 0;
-
-  return (
-    <div>
-      <BrowseNav />
-
-      {/* Filters */}
-      <div className="mb-4 flex flex-wrap gap-3">
-        <MultiSelect
-          label="All Topics"
-          options={topics.map((t) => ({ label: t.name, value: t.id }))}
-          selected={filters.topics}
-          onChange={(topics) => handleFilterChange({ topics })}
-          getLabel={(o) => (typeof o === 'string' ? o : o.label)}
-          getValue={(o) => (typeof o === 'string' ? o : o.value)}
-        />
-
-        {hasActiveFilters && (
-          <button
-            onClick={() => handleFilterChange({ topics: [] })}
-            className="px-3 py-2 text-sm text-ink-muted hover:text-ink"
-          >
-            Clear filters
-          </button>
-        )}
-      </div>
-
-      {/* Search */}
-      <form onSubmit={handleSearch} className="mb-6">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search collections..."
-            className="flex-1 px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber/50"
-          />
-          <button
-            type="submit"
-            className="px-4 py-2 bg-amber text-white rounded-lg text-sm font-medium hover:bg-amber-dark transition-colors"
-          >
-            Search
-          </button>
-        </div>
-      </form>
-
-      {loading ? (
-        <div className="text-center py-20 text-ink-muted">Loading collections...</div>
-      ) : error ? (
-        <div className="text-center py-20">
-          <div className="text-error mb-2">Failed to load collections</div>
-          <div className="text-sm text-ink-muted">{error}</div>
-        </div>
-      ) : filteredCollections.length === 0 ? (
-        <div className="text-center py-20 text-ink-muted">
-          {hasActiveFilters || filters.search
-            ? 'No collections match the current filters'
-            : 'No collections yet. Use the Collect page to create your first collection.'}
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {filteredCollections.map((collection) => (
-            <CollectionCard key={collection.id} collection={collection} />
           ))}
         </div>
       )}
@@ -1294,11 +1105,10 @@ export default function App() {
           <Route path="/collect/create" element={<CollectCreatePage />} />
           <Route path="/collect/manage" element={<CollectManagePage />} />
           <Route path="/collect/edit/:id" element={<CollectEditPage />} />
+          <Route path="/collect/:id" element={<CollectionDetailPage />} />
           {/* Browse routes */}
           <Route path="/browse" element={<Navigate to="/browse/prompts" replace />} />
           <Route path="/browse/prompts" element={<BrowsePromptsPage />} />
-          <Route path="/browse/collections" element={<BrowseCollectionsPage />} />
-          <Route path="/browse/collections/:id" element={<CollectionDetailPage />} />
         </Routes>
       </Layout>
     </BrowserRouter>
