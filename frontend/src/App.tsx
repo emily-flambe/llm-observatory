@@ -72,6 +72,7 @@ function ManageCollectionCard({
   onDelete,
   onRestore,
   isRunning,
+  succeeded,
 }: {
   collection: Collection;
   onRunNow: (id: string) => void;
@@ -79,6 +80,7 @@ function ManageCollectionCard({
   onDelete: (id: string) => void;
   onRestore: (id: string) => void;
   isRunning: boolean;
+  succeeded: boolean;
 }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const lastRunDate = collection.last_run_at ? parseBigQueryTimestamp(collection.last_run_at) : null;
@@ -192,6 +194,17 @@ function ManageCollectionCard({
           )}
         </div>
       </div>
+      {succeeded && (
+        <div className="mt-3 flex items-center gap-2 text-sm text-green-600">
+          <span>Run succeeded!</span>
+          <Link
+            to={`/browse/collections/${collection.id}`}
+            className="underline hover:text-green-700"
+          >
+            View responses
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
@@ -202,6 +215,7 @@ function CollectManagePage() {
   const [error, setError] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
+  const [succeededIds, setSucceededIds] = useState<Set<string>>(new Set());
   const [actionError, setActionError] = useState<string | null>(null);
   const [showDisabled, setShowDisabled] = useState(true);
 
@@ -234,6 +248,12 @@ function CollectManagePage() {
     }
     setActionError(null);
     setRunningIds((prev) => new Set(prev).add(id));
+    // Clear any previous success state for this collection
+    setSucceededIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
 
     try {
       const res = await fetch(`/api/admin/collections/${id}/run`, {
@@ -247,6 +267,8 @@ function CollectManagePage() {
         const data = (await res.json()) as { error?: string };
         throw new Error(data.error || 'Failed to run collection');
       }
+      // Mark as succeeded
+      setSucceededIds((prev) => new Set(prev).add(id));
       loadCollections(); // Refresh to get updated last_run_at
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to run collection');
@@ -390,6 +412,7 @@ function CollectManagePage() {
               onDelete={handleDelete}
               onRestore={handleRestore}
               isRunning={runningIds.has(collection.id)}
+              succeeded={succeededIds.has(collection.id)}
             />
           ))}
         </div>
@@ -1040,10 +1063,42 @@ function CollectionDetailPage() {
                 <span className="text-ink-muted">{expandedExecutions.has(group.promptId) ? '▼' : '▶'}</span>
               </button>
               {expandedExecutions.has(group.promptId) && (
-                <div className="p-4 space-y-4 bg-paper">
-                  {group.queries.map((query) => (
-                    <PromptCard key={query.id} query={query} />
-                  ))}
+                <div className="p-4 space-y-3 bg-white">
+                  {group.queries.flatMap((query) =>
+                    query.responses.map((resp, i) => (
+                      <div key={`${query.id}-${i}`} className="bg-paper rounded-lg p-4 border border-border">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-ink">{resp.model}</span>
+                            <span className="text-xs text-ink-muted">({resp.company})</span>
+                          </div>
+                          {resp.success && (
+                            <div className="flex items-center gap-3 text-xs text-ink-muted">
+                              {resp.latency_ms > 0 && (
+                                <span>{(resp.latency_ms / 1000).toFixed(2)}s</span>
+                              )}
+                              {(resp.input_tokens > 0 || resp.output_tokens > 0) && (
+                                <span>{resp.input_tokens + resp.output_tokens} tokens</span>
+                              )}
+                              {(resp.input_cost !== null || resp.output_cost !== null) && (
+                                <span className="text-green-600">
+                                  ${((resp.input_cost || 0) + (resp.output_cost || 0)).toFixed(6)}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        {resp.success ? (
+                          <div
+                            className="text-sm text-ink markdown-content"
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(resp.response || '') }}
+                          />
+                        ) : (
+                          <p className="text-sm text-error">{resp.error || 'Unknown error'}</p>
+                        )}
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
             </div>
