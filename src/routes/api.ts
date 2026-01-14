@@ -41,6 +41,122 @@ type Variables = {
 
 const api = new Hono<{ Bindings: Env; Variables: Variables }>();
 
+// Helper to run a collection (used by both create and manual run)
+async function runCollectionInternal(
+  env: Env,
+  db: D1Database,
+  collectionId: string
+): Promise<{
+  success: boolean;
+  error?: string;
+  results?: Array<{ modelId: string; success: boolean; latencyMs?: number; error?: string }>;
+}> {
+  const collection = await getCollection(db, collectionId);
+  if (!collection) {
+    return { success: false, error: 'Collection not found' };
+  }
+
+  const modelIds = await getCollectionVersionModels(db, collectionId);
+  if (modelIds.length === 0) {
+    return { success: false, error: 'Collection has no models configured' };
+  }
+
+  // Check rate limit
+  const rateLimit = await checkRateLimit(db, 'collect');
+  if (rateLimit.remaining < modelIds.length) {
+    return {
+      success: false,
+      error: `Would exceed daily rate limit (requested: ${modelIds.length}, remaining: ${rateLimit.remaining})`,
+    };
+  }
+
+  // Generate a prompt ID for this run
+  const promptId = crypto.randomUUID();
+  const collectedAt = new Date().toISOString();
+
+  // Run collection against all models in parallel
+  const modelPromises = modelIds.map(async (modelId) => {
+    const model = await getModel(db, modelId);
+    if (!model) {
+      return { modelId, success: false, error: 'Model not found' } as const;
+    }
+
+    let responseContent: string | null = null;
+    let reasoningContent: string | null = null;
+    let errorMsg: string | null = null;
+    let latencyMs = 0;
+    let inputTokens = 0;
+    let outputTokens = 0;
+
+    try {
+      const provider = createLLMProvider(model.id, model.provider, model.model_name, env);
+      const start = Date.now();
+      const response = await provider.complete({ prompt: collection.prompt_text });
+      latencyMs = Date.now() - start;
+      responseContent = response.content;
+      reasoningContent = response.reasoningContent ?? null;
+      inputTokens = response.inputTokens ?? 0;
+      outputTokens = response.outputTokens ?? 0;
+    } catch (err) {
+      errorMsg = err instanceof Error ? err.message : 'Unknown error';
+    }
+
+    // Calculate costs
+    let inputCost: number | null = null;
+    let outputCost: number | null = null;
+    if (model.input_price_per_m !== null && inputTokens > 0) {
+      inputCost = (inputTokens / 1_000_000) * model.input_price_per_m;
+    }
+    if (model.output_price_per_m !== null && outputTokens > 0) {
+      outputCost = (outputTokens / 1_000_000) * model.output_price_per_m;
+    }
+
+    // Save to BigQuery with collection reference
+    const bqRow: BigQueryRow = {
+      id: crypto.randomUUID(),
+      prompt_id: promptId,
+      collected_at: collectedAt,
+      source: 'collection',
+      company: extractCompany(model.provider, model.model_name),
+      product: extractProductFamily(model.model_name),
+      model: model.model_name,
+      topic_id: collection.topic_id,
+      topic_name: collection.topic_name,
+      prompt_template_id: collection.template_id,
+      prompt_template_name: collection.template_name,
+      prompt: collection.prompt_text,
+      response: responseContent,
+      reasoning_content: reasoningContent,
+      latency_ms: latencyMs,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      input_cost: inputCost,
+      output_cost: outputCost,
+      error: errorMsg,
+      success: !errorMsg,
+      collection_id: collection.id,
+      collection_version: collection.current_version,
+    };
+    insertRow(env, bqRow).catch((err) => {
+      console.error('Failed to save collection response to BigQuery:', err);
+    });
+
+    return errorMsg
+      ? ({ modelId, success: false, error: errorMsg } as const)
+      : ({ modelId, success: true, latencyMs } as const);
+  });
+
+  const results = await Promise.all(modelPromises);
+
+  // Update last_run_at
+  await updateCollectionLastRunAt(db, collectionId);
+
+  // Increment rate limit
+  await incrementRateLimit(db, 'collect', results.length);
+
+  return { success: true, results };
+}
+
 // Health check
 api.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
@@ -253,6 +369,8 @@ api.post('/collections', async (c) => {
     template_id: string;
     model_ids: string[];
     display_name?: string;
+    schedule_type?: 'daily' | 'weekly' | 'monthly' | 'custom' | null;
+    cron_expression?: string | null;
   }>();
 
   if (!body.topic_id || !body.template_id || !body.model_ids?.length) {
@@ -286,6 +404,14 @@ api.post('/collections', async (c) => {
     prompt_text: promptText,
     display_name: body.display_name,
     model_ids: body.model_ids,
+    schedule_type: body.schedule_type,
+    cron_expression: body.cron_expression,
+  });
+
+  // Run collection immediately (fire and forget - don't block response)
+  // This ensures the user sees initial responses right away
+  runCollectionInternal(c.env, c.env.DB, collection.id).catch((err) => {
+    console.error('Failed to run collection immediately:', err);
   });
 
   const collectionWithDetails = await getCollection(c.env.DB, collection.id);
@@ -402,121 +528,17 @@ admin.get('/sync-log', async (c) => {
 admin.post('/collections/:id/run', async (c) => {
   const { id } = c.req.param();
 
-  const collection = await getCollection(c.env.DB, id);
-  if (!collection) {
-    return c.json({ error: 'Collection not found' }, 404);
+  const result = await runCollectionInternal(c.env, c.env.DB, id);
+  if (!result.success) {
+    const status = result.error?.includes('not found') ? 404 : result.error?.includes('rate limit') ? 429 : 400;
+    return c.json({ error: result.error }, status);
   }
-
-  // Get current version's models
-  const modelIds = await getCollectionVersionModels(c.env.DB, id);
-  if (modelIds.length === 0) {
-    return c.json({ error: 'Collection has no models configured' }, 400);
-  }
-
-  // Check rate limit
-  const rateLimit = await checkRateLimit(c.env.DB, 'collect');
-  if (rateLimit.remaining < modelIds.length) {
-    return c.json(
-      {
-        error: 'Would exceed daily rate limit',
-        requested: modelIds.length,
-        remaining: rateLimit.remaining,
-        limit: rateLimit.limit,
-        resetsAt: 'midnight UTC',
-      },
-      429
-    );
-  }
-
-  // Generate a prompt ID for this run
-  const promptId = crypto.randomUUID();
-  const collectedAt = new Date().toISOString();
-
-  // Run collection against all models in parallel
-  const modelPromises = modelIds.map(async (modelId) => {
-    const model = await getModel(c.env.DB, modelId);
-    if (!model) {
-      return { modelId, success: false, error: 'Model not found' } as const;
-    }
-
-    let responseContent: string | null = null;
-    let reasoningContent: string | null = null;
-    let errorMsg: string | null = null;
-    let latencyMs = 0;
-    let inputTokens = 0;
-    let outputTokens = 0;
-
-    try {
-      const provider = createLLMProvider(model.id, model.provider, model.model_name, c.env);
-      const start = Date.now();
-      const response = await provider.complete({ prompt: collection.prompt_text });
-      latencyMs = Date.now() - start;
-      responseContent = response.content;
-      reasoningContent = response.reasoningContent ?? null;
-      inputTokens = response.inputTokens ?? 0;
-      outputTokens = response.outputTokens ?? 0;
-    } catch (err) {
-      errorMsg = err instanceof Error ? err.message : 'Unknown error';
-    }
-
-    // Calculate costs
-    let inputCost: number | null = null;
-    let outputCost: number | null = null;
-    if (model.input_price_per_m !== null && inputTokens > 0) {
-      inputCost = (inputTokens / 1_000_000) * model.input_price_per_m;
-    }
-    if (model.output_price_per_m !== null && outputTokens > 0) {
-      outputCost = (outputTokens / 1_000_000) * model.output_price_per_m;
-    }
-
-    // Save to BigQuery with collection reference
-    const bqRow: BigQueryRow = {
-      id: crypto.randomUUID(),
-      prompt_id: promptId,
-      collected_at: collectedAt,
-      source: 'collection',
-      company: extractCompany(model.provider, model.model_name),
-      product: extractProductFamily(model.model_name),
-      model: model.model_name,
-      topic_id: collection.topic_id,
-      topic_name: collection.topic_name,
-      prompt_template_id: collection.template_id,
-      prompt_template_name: collection.template_name,
-      prompt: collection.prompt_text,
-      response: responseContent,
-      reasoning_content: reasoningContent,
-      latency_ms: latencyMs,
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
-      input_cost: inputCost,
-      output_cost: outputCost,
-      error: errorMsg,
-      success: !errorMsg,
-      collection_id: collection.id,
-      collection_version: collection.current_version,
-    };
-    insertRow(c.env, bqRow).catch((err) => {
-      console.error('Failed to save collection response to BigQuery:', err);
-    });
-
-    return errorMsg
-      ? ({ modelId, success: false, error: errorMsg } as const)
-      : ({ modelId, success: true, latencyMs } as const);
-  });
-
-  const results = await Promise.all(modelPromises);
-
-  // Update last_run_at
-  await updateCollectionLastRunAt(c.env.DB, id);
-
-  // Increment rate limit
-  await incrementRateLimit(c.env.DB, 'collect', results.length);
 
   return c.json({
     collection_id: id,
-    results,
-    successful: results.filter((r) => r.success).length,
-    failed: results.filter((r) => !r.success).length,
+    results: result.results,
+    successful: result.results?.filter((r) => r.success).length ?? 0,
+    failed: result.results?.filter((r) => !r.success).length ?? 0,
   });
 });
 
