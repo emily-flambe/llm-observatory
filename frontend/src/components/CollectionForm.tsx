@@ -180,20 +180,31 @@ export default function CollectionForm({ onCollectionComplete, editId }: Collect
   const selectAllModels = () => setSelectedModelIds(new Set(models.map(m => m.id)));
   const clearAllModels = () => setSelectedModelIds(new Set());
 
-  const handleCreateTopic = () => {
+  const handleCreateTopic = async () => {
     if (!customTopic.name) return;
-    // Instead of creating in D1, just add to local list
-    // The topic will be created in BigQuery when first response is collected
     const id = generateSlug(customTopic.name);
-    const newTopic: Topic = {
-      id,
-      name: customTopic.name,
-      description: customTopic.description || 'New topic',
-    };
-    setTopics([...topics, newTopic]);
-    setSelectedTopicId(id);
-    setShowCustomTopic(false);
-    setCustomTopic({ name: '', description: '' });
+    try {
+      const res = await fetch('/api/topics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          name: customTopic.name,
+          description: customTopic.description || 'New topic',
+        }),
+      });
+      if (!res.ok) {
+        const errMsg = await getErrorMessage(res, 'Failed to create topic');
+        throw new Error(errMsg);
+      }
+      const { topic } = await res.json() as { topic: Topic };
+      setTopics([...topics, topic]);
+      setSelectedTopicId(topic.id);
+      setShowCustomTopic(false);
+      setCustomTopic({ name: '', description: '' });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create topic');
+    }
   };
 
   const handleCreateTemplate = async () => {

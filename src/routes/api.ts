@@ -16,6 +16,7 @@ import {
   getCollectionVersions,
   updateCollectionLastRunAt,
   getTopic,
+  createTopic,
 } from '../services/storage';
 import { syncAllProviders } from '../services/model-sync';
 import { syncBasellmMetadata } from '../services/basellm';
@@ -226,6 +227,33 @@ api.get('/topics/:id/responses', async (c) => {
   }
 
   return c.json({ responses: result.data.rows, totalRows: result.data.totalRows });
+});
+
+// Create a new topic (in D1 - required for collections foreign key)
+api.post('/topics', async (c) => {
+  const body = await c.req.json<{
+    id: string;
+    name: string;
+    description?: string;
+  }>();
+
+  if (!body.id || !body.name) {
+    return c.json({ error: 'id and name are required' }, 400);
+  }
+
+  // Check if topic already exists
+  const existing = await getTopic(c.env.DB, body.id);
+  if (existing) {
+    return c.json({ topic: existing, created: false });
+  }
+
+  try {
+    const topic = await createTopic(c.env.DB, body);
+    return c.json({ topic, created: true }, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to create topic';
+    return c.json({ error: message }, 500);
+  }
 });
 
 // ==================== Prompt Lab History ====================
