@@ -1054,3 +1054,13 @@ export async function getCollectionResponses(
 export function clearTokenCache(): void {
   cachedToken = null;
 }
+
+/**
+ * Set a cached token (for testing only - bypasses JWT signing)
+ */
+export function setTokenCache(token: string, expiresInMs: number = 3600000): void {
+  cachedToken = {
+    token,
+    expiresAt: Date.now() + expiresInMs,
+  };
+}
