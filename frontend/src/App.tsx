@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -775,6 +775,7 @@ function CollectionDetailPage() {
   const [prompts, setPrompts] = useState<PromptLabQuery[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedExecutions, setExpandedExecutions] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!id) return;
@@ -796,6 +797,50 @@ function CollectionDetailPage() {
         setLoading(false);
       });
   }, [id]);
+
+  // Group responses by prompt_id (each prompt_id = one execution)
+  const executionGroups = useMemo(() => {
+    const groups = new Map<string, PromptLabQuery[]>();
+    prompts.forEach((p) => {
+      const key = p.id; // prompt_id groups all responses from one execution
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)!.push(p);
+    });
+    // Sort by collected_at descending (most recent first)
+    return Array.from(groups.entries())
+      .map(([promptId, queries]) => ({
+        promptId,
+        queries,
+        collectedAt: queries[0]?.collected_at || '',
+        responseCount: queries.reduce((acc, q) => acc + q.responses.length, 0),
+      }))
+      .sort((a, b) => new Date(b.collectedAt).getTime() - new Date(a.collectedAt).getTime());
+  }, [prompts]);
+
+  const toggleExecution = (promptId: string) => {
+    setExpandedExecutions((prev) => {
+      const next = new Set(prev);
+      if (next.has(promptId)) {
+        next.delete(promptId);
+      } else {
+        next.add(promptId);
+      }
+      return next;
+    });
+  };
+
+  const formatSchedule = (scheduleType: string | null, cronExpression: string | null): string => {
+    if (!scheduleType) return 'No schedule';
+    if (scheduleType === 'custom' && cronExpression) return `Custom: ${cronExpression}`;
+    return scheduleType.charAt(0).toUpperCase() + scheduleType.slice(1);
+  };
+
+  const formatLocalTime = (isoString: string | null): string => {
+    if (!isoString) return 'Never';
+    return new Date(isoString).toLocaleString();
+  };
 
   if (loading) {
     return (
@@ -840,15 +885,59 @@ function CollectionDetailPage() {
         </div>
       </div>
 
-      {/* Responses */}
-      {prompts.length === 0 ? (
+      {/* Schedule & Status Info */}
+      <div className="bg-paper-dark rounded-lg p-4 mb-6 border border-border">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div>
+            <div className="text-ink-muted">Schedule</div>
+            <div className="font-medium text-ink">
+              {formatSchedule(collection.schedule_type, collection.cron_expression)}
+              {collection.is_paused ? ' (Paused)' : ''}
+            </div>
+          </div>
+          <div>
+            <div className="text-ink-muted">Last Run</div>
+            <div className="font-medium text-ink">{formatLocalTime(collection.last_run_at)}</div>
+          </div>
+          <div>
+            <div className="text-ink-muted">Total Executions</div>
+            <div className="font-medium text-ink">{executionGroups.length}</div>
+          </div>
+          <div>
+            <div className="text-ink-muted">Created</div>
+            <div className="font-medium text-ink">{formatLocalTime(collection.created_at)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Executions */}
+      {executionGroups.length === 0 ? (
         <div className="text-center py-20 text-ink-muted">
           No responses collected yet. Run the collection from Collect &gt; Manage.
         </div>
       ) : (
-        <div className="space-y-4">
-          {prompts.map((query) => (
-            <PromptCard key={query.id} query={query} />
+        <div className="space-y-3">
+          <h3 className="text-lg font-medium text-ink">Execution History</h3>
+          {executionGroups.map((group) => (
+            <div key={group.promptId} className="border border-border rounded-lg overflow-hidden">
+              <button
+                onClick={() => toggleExecution(group.promptId)}
+                className="w-full px-4 py-3 bg-paper-dark flex items-center justify-between hover:bg-paper-darker transition-colors"
+              >
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="font-medium text-ink">{formatLocalTime(group.collectedAt)}</span>
+                  <span className="text-ink-muted">{group.responseCount} responses</span>
+                </div>
+                <span className="text-ink-muted">{expandedExecutions.has(group.promptId) ? '▼' : '▶'}</span>
+              </button>
+              {expandedExecutions.has(group.promptId) && (
+                <div className="p-4 space-y-4 bg-paper">
+                  {group.queries.map((query) => (
+                    <PromptCard key={query.id} query={query} />
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}
