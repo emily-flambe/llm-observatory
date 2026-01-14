@@ -657,7 +657,7 @@ function CollectionDetailPage() {
         collectedAt: queries[0]?.collected_at || '',
         responseCount: queries.reduce((acc, q) => acc + q.responses.length, 0),
       }))
-      .sort((a, b) => new Date(b.collectedAt).getTime() - new Date(a.collectedAt).getTime());
+      .sort((a, b) => parseBigQueryTimestamp(b.collectedAt).getTime() - parseBigQueryTimestamp(a.collectedAt).getTime());
   }, [prompts]);
 
   const toggleExecution = (promptId: string) => {
@@ -782,9 +782,11 @@ function CollectionDetailPage() {
     return scheduleType.charAt(0).toUpperCase() + scheduleType.slice(1);
   };
 
-  const formatLocalTime = (isoString: string | null): string => {
-    if (!isoString) return 'Never';
-    return new Date(isoString).toLocaleString();
+  const formatLocalTime = (timestamp: string | null): string => {
+    if (!timestamp) return 'Never';
+    const date = parseBigQueryTimestamp(timestamp);
+    if (isNaN(date.getTime())) return 'Invalid date';
+    return date.toLocaleString();
   };
 
   if (loading) {
