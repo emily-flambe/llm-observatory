@@ -12,6 +12,7 @@ import {
   createCollection,
   updateCollection,
   deleteCollection,
+  restoreCollection,
   getCollectionVersionModels,
   getCollectionVersions,
   updateCollectionLastRunAt,
@@ -265,12 +266,14 @@ api.get('/prompts', async (c) => {
   const modelsParam = c.req.query('models'); // comma-separated
   const companiesParam = c.req.query('companies'); // comma-separated
   const topicsParam = c.req.query('topics'); // comma-separated
+  const sourcesParam = c.req.query('sources'); // comma-separated: 'collection', 'prompt-lab'
   const limit = limitParam ? parseInt(limitParam, 10) : 50;
 
   // Parse comma-separated values into arrays
   const models = modelsParam ? modelsParam.split(',').filter(Boolean) : undefined;
   const companies = companiesParam ? companiesParam.split(',').filter(Boolean) : undefined;
   const topics = topicsParam ? topicsParam.split(',').filter(Boolean) : undefined;
+  const sources = sourcesParam ? sourcesParam.split(',').filter(Boolean) : undefined;
 
   const result = await getRecentPrompts(c.env, {
     limit,
@@ -278,6 +281,7 @@ api.get('/prompts', async (c) => {
     models,
     companies,
     topics,
+    sources,
   });
   if (!result.success) {
     return c.json({ error: result.error }, 500);
@@ -344,7 +348,9 @@ api.get('/models', async (c) => {
 
 // List all collections
 api.get('/collections', async (c) => {
-  const collections = await getCollections(c.env.DB);
+  const includeDisabledParam = c.req.query('includeDisabled');
+  const includeDisabled = includeDisabledParam !== 'false'; // Include by default
+  const collections = await getCollections(c.env.DB, { includeDisabled });
   return c.json({ collections });
 });
 
@@ -357,8 +363,11 @@ api.get('/collections/:id', async (c) => {
   }
 
   // Get models and versions for this collection
-  const models = await getCollectionVersionModels(c.env.DB, id);
+  const modelIds = await getCollectionVersionModels(c.env.DB, id);
   const versions = await getCollectionVersions(c.env.DB, id);
+
+  // Return models as objects with id property (for frontend compatibility)
+  const models = modelIds.map((id) => ({ id }));
 
   return c.json({
     collection: {
@@ -471,11 +480,21 @@ api.put('/collections/:id', async (c) => {
   return c.json({ collection, new_version });
 });
 
-// Delete collection
+// Delete collection (soft-delete: sets disabled flag)
 api.delete('/collections/:id', async (c) => {
   const { id } = c.req.param();
   const deleted = await deleteCollection(c.env.DB, id);
   if (!deleted) {
+    return c.json({ error: 'Collection not found' }, 404);
+  }
+  return c.json({ success: true });
+});
+
+// Restore a disabled collection
+api.put('/collections/:id/restore', async (c) => {
+  const { id } = c.req.param();
+  const restored = await restoreCollection(c.env.DB, id);
+  if (!restored) {
     return c.json({ error: 'Collection not found' }, 404);
   }
   return c.json({ success: true });

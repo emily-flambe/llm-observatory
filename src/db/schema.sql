@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS collections (
     template_id TEXT NOT NULL REFERENCES prompt_templates(id),
     prompt_text TEXT NOT NULL,                                    -- Rendered prompt (immutable snapshot)
     display_name TEXT,                                            -- Optional custom name, null = auto-generate
+    disabled INTEGER NOT NULL DEFAULT 0,                          -- Soft-delete flag
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     last_run_at TEXT                                              -- Updated after each run
 );

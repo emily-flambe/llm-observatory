@@ -8,8 +8,11 @@ import type {
   PromptTemplatesResponse,
   ModelsResponse,
   CollectionDetail,
+  PromptLabQuery,
+  PromptLabResponse,
 } from '../types';
 import ModelSelector from './ModelSelector';
+import { renderMarkdown } from '../utils/markdown';
 
 // Helper to safely extract error message from response
 async function getErrorMessage(res: Response, defaultMsg: string): Promise<string> {
@@ -68,6 +71,8 @@ export default function CollectionForm({ onCollectionComplete, editId }: Collect
   const [results, setResults] = useState<CollectionResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const [fetchedResponses, setFetchedResponses] = useState<PromptLabQuery[] | null>(null);
+  const [loadingResponses, setLoadingResponses] = useState(false);
 
   const generateSlug = (name: string): string => {
     return name
@@ -240,6 +245,7 @@ export default function CollectionForm({ onCollectionComplete, editId }: Collect
     setError(null);
     setResults(null);
     setLogs([]);
+    setFetchedResponses(null);
 
     const topic = topics.find(t => t.id === selectedTopicId);
     const template = templates.find(t => t.id === selectedTemplateId);
@@ -361,6 +367,24 @@ export default function CollectionForm({ onCollectionComplete, editId }: Collect
       addLog(`Collection complete: ${successful}/${allResults.length} successful`);
 
       setResults(allResults);
+
+      // Fetch the actual responses to display
+      if (successful > 0) {
+        addLog('Fetching response content...');
+        setLoadingResponses(true);
+        try {
+          const responsesRes = await fetch(`/api/collections/${collectionId}/responses?limit=10`);
+          if (responsesRes.ok) {
+            const data = await responsesRes.json() as { prompts: PromptLabQuery[] };
+            setFetchedResponses(data.prompts);
+            addLog(`Loaded ${data.prompts.length} run(s) with responses`);
+          }
+        } catch {
+          // Silently fail - responses are optional enhancement
+        } finally {
+          setLoadingResponses(false);
+        }
+      }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Request failed';
       addLog(`✗ Error: ${errorMsg}`);
@@ -705,6 +729,90 @@ export default function CollectionForm({ onCollectionComplete, editId }: Collect
               {results.filter(r => r.success).length} of {results.length} successful
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Response Content */}
+      {(loadingResponses || fetchedResponses) && (
+        <div className="border-t border-border">
+          <div className="px-6 py-4">
+            <h3 className="text-sm font-medium text-ink mb-3">Response Content</h3>
+            {loadingResponses ? (
+              <div className="text-ink-muted text-sm">Loading responses...</div>
+            ) : fetchedResponses && fetchedResponses.length > 0 ? (
+              <div className="space-y-4">
+                {fetchedResponses.map((run) => (
+                  <div key={run.id} className="space-y-3">
+                    <div className="text-xs text-ink-muted">
+                      Run at {new Date(run.collected_at).toLocaleString()}
+                    </div>
+                    <div className="grid gap-3">
+                      {run.responses.map((response, idx) => (
+                        <ResponseCard key={`${run.id}-${idx}`} response={response} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-ink-muted text-sm">No responses found</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResponseCard({ response }: { response: PromptLabResponse }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const tokenInfo = response.input_tokens > 0 || response.output_tokens > 0
+    ? `${response.input_tokens} in / ${response.output_tokens} out`
+    : null;
+
+  // Note: renderMarkdown sanitizes HTML by escaping < and > before processing
+  // This follows the same pattern used in PromptLab.tsx
+  const renderedContent = response.response ? renderMarkdown(response.response) : '';
+
+  return (
+    <div className="bg-white border border-border rounded-lg overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-paper-dark transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <span className="font-medium text-ink">{response.company}</span>
+          <span className="text-ink-muted text-sm">{response.model}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          {tokenInfo && (
+            <span className="text-xs text-ink-muted">{tokenInfo}</span>
+          )}
+          <span className="text-xs text-ink-muted">
+            {(response.latency_ms / 1000).toFixed(1)}s
+          </span>
+          {response.success ? (
+            <span className="text-xs text-success">OK</span>
+          ) : (
+            <span className="text-xs text-error">FAIL</span>
+          )}
+          <span className="text-ink-muted">{expanded ? '−' : '+'}</span>
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="px-4 py-3 border-t border-border bg-paper-dark">
+          {response.error ? (
+            <div className="text-error text-sm">{response.error}</div>
+          ) : renderedContent ? (
+            <div
+              className="text-ink-light text-sm markdown-content"
+              dangerouslySetInnerHTML={{ __html: renderedContent }}
+            />
+          ) : (
+            <div className="text-ink-muted text-sm italic">No response content</div>
+          )}
         </div>
       )}
     </div>
