@@ -114,6 +114,7 @@ export interface Collection {
   template_id: string;
   prompt_text: string;
   display_name: string | null;
+  disabled: number;
   created_at: string;
   last_run_at: string | null;
   topic_name: string;

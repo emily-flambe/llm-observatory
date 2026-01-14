@@ -52,6 +52,7 @@ export interface Collection {
   template_id: string;
   prompt_text: string;
   display_name: string | null;
+  disabled: number;
   created_at: string;
   last_run_at: string | null;
 }
@@ -310,7 +311,12 @@ export async function getModelSyncLogs(
 
 // Collections
 
-export async function getCollections(db: D1Database): Promise<CollectionWithDetails[]> {
+export async function getCollections(
+  db: D1Database,
+  options: { includeDisabled?: boolean } = {}
+): Promise<CollectionWithDetails[]> {
+  const { includeDisabled = true } = options;
+  const whereClause = includeDisabled ? '' : 'WHERE c.disabled = 0';
   const result = await db
     .prepare(`
       SELECT
@@ -319,6 +325,7 @@ export async function getCollections(db: D1Database): Promise<CollectionWithDeta
         c.template_id,
         c.prompt_text,
         c.display_name,
+        c.disabled,
         c.created_at,
         c.last_run_at,
         t.name as topic_name,
@@ -333,6 +340,7 @@ export async function getCollections(db: D1Database): Promise<CollectionWithDeta
       LEFT JOIN prompt_templates pt ON c.template_id = pt.id
       LEFT JOIN collection_versions cv ON cv.collection_id = c.id
         AND cv.version = (SELECT MAX(version) FROM collection_versions WHERE collection_id = c.id)
+      ${whereClause}
       ORDER BY c.created_at DESC
     `)
     .all<CollectionWithDetails>();
@@ -351,6 +359,7 @@ export async function getCollection(
         c.template_id,
         c.prompt_text,
         c.display_name,
+        c.disabled,
         c.created_at,
         c.last_run_at,
         t.name as topic_name,
@@ -439,6 +448,7 @@ export async function createCollection(
     template_id: collection.template_id,
     prompt_text: collection.prompt_text,
     display_name: collection.display_name ?? null,
+    disabled: 0,
     created_at: now,
     last_run_at: null,
   };
@@ -563,8 +573,13 @@ export async function updateCollection(
 }
 
 export async function deleteCollection(db: D1Database, id: string): Promise<boolean> {
-  // Due to ON DELETE CASCADE, this will also delete versions and version_models
-  const result = await db.prepare('DELETE FROM collections WHERE id = ?').bind(id).run();
+  // Soft-delete: set disabled flag instead of actually deleting
+  const result = await db.prepare('UPDATE collections SET disabled = 1 WHERE id = ?').bind(id).run();
+  return result.meta.changes > 0;
+}
+
+export async function restoreCollection(db: D1Database, id: string): Promise<boolean> {
+  const result = await db.prepare('UPDATE collections SET disabled = 0 WHERE id = ?').bind(id).run();
   return result.meta.changes > 0;
 }
 

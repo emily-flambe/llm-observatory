@@ -679,7 +679,7 @@ export interface PromptLabQuery {
  */
 export async function getRecentPrompts(
   env: BigQueryEnv,
-  options: { limit?: number; search?: string; models?: string[]; companies?: string[]; topics?: string[] } = {}
+  options: { limit?: number; search?: string; models?: string[]; companies?: string[]; topics?: string[]; sources?: string[] } = {}
 ): Promise<BigQueryResult<PromptLabQuery[]>> {
   const tokenResult = await getAccessToken(env);
   if (!tokenResult.success) {
@@ -795,6 +795,18 @@ export async function getRecentPrompts(
         name: `topic_${i}`,
         parameterType: { type: 'STRING' },
         parameterValue: { value: topic },
+      });
+    });
+  }
+
+  if (options.sources && options.sources.length > 0) {
+    const sourceConditions = options.sources.map((_, i) => `source = @source_${i}`).join(' OR ');
+    query += ` AND (${sourceConditions})`;
+    options.sources.forEach((source, i) => {
+      queryParameters.push({
+        name: `source_${i}`,
+        parameterType: { type: 'STRING' },
+        parameterValue: { value: source },
       });
     });
   }

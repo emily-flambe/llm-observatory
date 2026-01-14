@@ -70,20 +70,25 @@ function ManageCollectionCard({
   onRunNow,
   onTogglePause,
   onDelete,
+  onRestore,
   isRunning,
 }: {
   collection: Collection;
   onRunNow: (id: string) => void;
   onTogglePause: (id: string, pause: boolean) => void;
   onDelete: (id: string) => void;
+  onRestore: (id: string) => void;
   isRunning: boolean;
 }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const lastRunDate = collection.last_run_at ? parseBigQueryTimestamp(collection.last_run_at) : null;
   const displayName = collection.display_name || `${collection.topic_name} - ${collection.template_name}`;
+  const isDisabled = collection.disabled === 1;
 
   let status: { label: string; color: string; icon: string };
-  if (!collection.schedule_type) {
+  if (isDisabled) {
+    status = { label: 'Disabled', color: 'text-ink-muted', icon: '⊘' };
+  } else if (!collection.schedule_type) {
     status = { label: 'Manual', color: 'text-ink-muted', icon: '○' };
   } else if (collection.is_paused) {
     status = { label: 'Paused', color: 'text-amber', icon: '⏸' };
@@ -98,11 +103,11 @@ function ManageCollectionCard({
   };
 
   return (
-    <div className="bg-white border border-border rounded-lg p-4">
+    <div className={`bg-white border border-border rounded-lg p-4 ${isDisabled ? 'opacity-60' : ''}`}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="font-medium text-ink truncate">{displayName}</h3>
+            <h3 className={`font-medium truncate ${isDisabled ? 'text-ink-muted line-through' : 'text-ink'}`}>{displayName}</h3>
             <span className={`text-xs ${status.color}`}>
               {status.icon} {status.label}
             </span>
@@ -121,58 +126,69 @@ function ManageCollectionCard({
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={() => onRunNow(collection.id)}
-            disabled={isRunning}
-            className="px-2 py-1 text-xs bg-amber text-white rounded hover:bg-amber-dark disabled:opacity-50"
-          >
-            {isRunning ? 'Running...' : 'Run Now'}
-          </button>
-          {collection.schedule_type && (
+          {isDisabled ? (
             <button
-              onClick={() => onTogglePause(collection.id, !collection.is_paused)}
-              className="px-2 py-1 text-xs border border-border rounded hover:bg-paper-dark"
+              onClick={() => onRestore(collection.id)}
+              className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
             >
-              {collection.is_paused ? 'Resume' : 'Pause'}
-            </button>
-          )}
-          <Link
-            to={`/browse/collections/${collection.id}`}
-            className="px-2 py-1 text-xs border border-border rounded hover:bg-paper-dark"
-          >
-            History
-          </Link>
-          <Link
-            to={`/collect/edit/${collection.id}`}
-            className="px-2 py-1 text-xs border border-border rounded hover:bg-paper-dark"
-          >
-            Edit
-          </Link>
-          {!showDeleteConfirm ? (
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="px-2 py-1 text-xs text-error border border-error/30 rounded hover:bg-red-50"
-            >
-              Delete
+              Restore
             </button>
           ) : (
-            <div className="flex items-center gap-1">
+            <>
               <button
-                onClick={() => {
-                  onDelete(collection.id);
-                  setShowDeleteConfirm(false);
-                }}
-                className="px-2 py-1 text-xs bg-error text-white rounded"
+                onClick={() => onRunNow(collection.id)}
+                disabled={isRunning}
+                className="px-2 py-1 text-xs bg-amber text-white rounded hover:bg-amber-dark disabled:opacity-50"
               >
-                Confirm
+                {isRunning ? 'Running...' : 'Run Now'}
               </button>
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="px-2 py-1 text-xs border border-border rounded"
+              {collection.schedule_type && (
+                <button
+                  onClick={() => onTogglePause(collection.id, !collection.is_paused)}
+                  className="px-2 py-1 text-xs border border-border rounded hover:bg-paper-dark"
+                >
+                  {collection.is_paused ? 'Resume' : 'Pause'}
+                </button>
+              )}
+              <Link
+                to={`/browse/collections/${collection.id}`}
+                className="px-2 py-1 text-xs border border-border rounded hover:bg-paper-dark"
               >
-                Cancel
-              </button>
-            </div>
+                History
+              </Link>
+              <Link
+                to={`/collect/edit/${collection.id}`}
+                className="px-2 py-1 text-xs border border-border rounded hover:bg-paper-dark"
+              >
+                Edit
+              </Link>
+              {!showDeleteConfirm ? (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="px-2 py-1 text-xs text-error border border-error/30 rounded hover:bg-red-50"
+                >
+                  Delete
+                </button>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      onDelete(collection.id);
+                      setShowDeleteConfirm(false);
+                    }}
+                    className="px-2 py-1 text-xs bg-error text-white rounded"
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="px-2 py-1 text-xs border border-border rounded"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -187,9 +203,10 @@ function CollectManagePage() {
   const [apiKey, setApiKey] = useState('');
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showDisabled, setShowDisabled] = useState(true);
 
   const loadCollections = () => {
-    fetch('/api/collections')
+    fetch(`/api/collections?includeDisabled=${showDisabled}`)
       .then(async (res) => {
         const data = (await res.json()) as { error?: string } & CollectionsResponse;
         if (!res.ok) throw new Error(data.error || 'Failed to load collections');
@@ -208,7 +225,7 @@ function CollectManagePage() {
 
   useEffect(() => {
     loadCollections();
-  }, []);
+  }, [showDisabled]);
 
   const handleRunNow = async (id: string) => {
     if (!apiKey) {
@@ -292,6 +309,30 @@ function CollectManagePage() {
     }
   };
 
+  const handleRestore = async (id: string) => {
+    if (!apiKey) {
+      setActionError('Please enter an API key to restore collections');
+      return;
+    }
+    setActionError(null);
+
+    try {
+      const res = await fetch(`/api/collections/${id}/restore`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        throw new Error(data.error || 'Failed to restore collection');
+      }
+      loadCollections();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to restore collection');
+    }
+  };
+
   return (
     <div>
       <CollectNavTabs />
@@ -306,6 +347,19 @@ function CollectManagePage() {
           placeholder="Enter admin API key to run, pause, or delete"
           className="w-full max-w-md rounded-lg px-3 py-2 text-sm border border-border focus:border-amber focus:ring-1 focus:ring-amber"
         />
+      </div>
+
+      {/* Show disabled toggle */}
+      <div className="mb-4">
+        <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showDisabled}
+            onChange={(e) => setShowDisabled(e.target.checked)}
+            className="rounded border-border text-amber focus:ring-amber"
+          />
+          Show disabled collections
+        </label>
       </div>
 
       {actionError && (
@@ -334,6 +388,7 @@ function CollectManagePage() {
               onRunNow={handleRunNow}
               onTogglePause={handleTogglePause}
               onDelete={handleDelete}
+              onRestore={handleRestore}
               isRunning={runningIds.has(collection.id)}
             />
           ))}
@@ -443,6 +498,7 @@ interface FilterParams {
   models: string[];
   companies: string[];
   topics: string[];
+  sources: string[];
 }
 
 // Multi-select dropdown component
@@ -554,6 +610,8 @@ function PromptsContent({
     if (filters.models.length > 0) params.set('models', filters.models.join(','));
     if (filters.companies.length > 0) params.set('companies', filters.companies.join(','));
     if (filters.topics.length > 0) params.set('topics', filters.topics.join(','));
+    // Only filter by source when exactly one is selected (both or neither means show all)
+    if (filters.sources.length === 1) params.set('sources', filters.sources.join(','));
 
     fetch(`/api/prompts?${params}`)
       .then(async (res) => {
@@ -570,20 +628,37 @@ function PromptsContent({
         setPrompts([]);
       })
       .finally(() => setLoading(false));
-  }, [filters.search, filters.models, filters.companies, filters.topics]);
+  }, [filters.search, filters.models, filters.companies, filters.topics, filters.sources]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     onFilterChange({ search: searchInput });
   };
 
+  // Source filter: when both or neither are checked, show all (don't filter)
+  // When only one is checked, filter to that source
+  const sourceFilterActive = filters.sources.length === 1;
+
   const hasActiveFilters =
-    filters.models.length > 0 || filters.companies.length > 0 || filters.topics.length > 0;
+    filters.models.length > 0 || filters.companies.length > 0 || filters.topics.length > 0 || sourceFilterActive;
+
+  // Toggle source checkbox - both checked = show all, one checked = filter to that source
+  const toggleSource = (source: string) => {
+    if (filters.sources.includes(source)) {
+      // Unchecking this source
+      const newSources = filters.sources.filter((s) => s !== source);
+      onFilterChange({ sources: newSources });
+    } else {
+      // Checking this source
+      const newSources = [...filters.sources, source];
+      onFilterChange({ sources: newSources });
+    }
+  };
 
   return (
     <>
       {/* Filters */}
-      <div className="mb-4 flex flex-wrap gap-3">
+      <div className="mb-4 flex flex-wrap gap-3 items-center">
         <MultiSelect
           label="All Companies"
           options={companies}
@@ -609,9 +684,31 @@ function PromptsContent({
           getValue={(o) => (typeof o === 'string' ? o : o.value)}
         />
 
+        {/* Source checkboxes */}
+        <div className="flex items-center gap-3 px-2">
+          <label className="flex items-center gap-1.5 text-sm text-ink cursor-pointer">
+            <input
+              type="checkbox"
+              checked={filters.sources.includes('collection')}
+              onChange={() => toggleSource('collection')}
+              className="rounded border-border text-amber focus:ring-amber"
+            />
+            Collections
+          </label>
+          <label className="flex items-center gap-1.5 text-sm text-ink cursor-pointer">
+            <input
+              type="checkbox"
+              checked={filters.sources.includes('prompt-lab')}
+              onChange={() => toggleSource('prompt-lab')}
+              className="rounded border-border text-amber focus:ring-amber"
+            />
+            Ad Hoc
+          </label>
+        </div>
+
         {hasActiveFilters && (
           <button
-            onClick={() => onFilterChange({ models: [], companies: [], topics: [] })}
+            onClick={() => onFilterChange({ models: [], companies: [], topics: [], sources: ['collection', 'prompt-lab'] })}
             className="px-3 py-2 text-sm text-ink-muted hover:text-ink"
           >
             Clear filters
@@ -682,11 +779,19 @@ function BrowsePromptsPage() {
   const parseArray = (param: string | null): string[] =>
     param ? param.split(',').filter(Boolean) : [];
 
+  // Parse sources from URL, default to both checked (show all)
+  const parseSources = (param: string | null): string[] => {
+    if (param === null) return ['collection', 'prompt-lab']; // Default: both checked
+    const sources = param.split(',').filter(Boolean);
+    return sources.length > 0 ? sources : ['collection', 'prompt-lab'];
+  };
+
   const filters: FilterParams = {
     search: searchParams.get('search') || '',
     models: parseArray(searchParams.get('models')),
     companies: parseArray(searchParams.get('companies')),
     topics: parseArray(searchParams.get('topics')),
+    sources: parseSources(searchParams.get('sources')),
   };
 
   const handleFilterChange = (newFilters: Partial<FilterParams>) => {
@@ -696,11 +801,15 @@ function BrowsePromptsPage() {
     if (updated.models.length > 0) params.set('models', updated.models.join(','));
     if (updated.companies.length > 0) params.set('companies', updated.companies.join(','));
     if (updated.topics.length > 0) params.set('topics', updated.topics.join(','));
+    // Only persist sources to URL if not both selected (both = default = no param needed)
+    if (updated.sources.length === 1 || updated.sources.length === 0) {
+      params.set('sources', updated.sources.join(','));
+    }
     setSearchParams(params);
   };
 
   // Create a key from all filter params to reset component state when any filter changes
-  const filterKey = `${filters.search}-${filters.models.join(',')}-${filters.companies.join(',')}-${filters.topics.join(',')}`;
+  const filterKey = `${filters.search}-${filters.models.join(',')}-${filters.companies.join(',')}-${filters.topics.join(',')}-${filters.sources.join(',')}`;
 
   return (
     <div>
