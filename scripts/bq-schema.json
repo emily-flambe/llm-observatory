@@ -12,11 +12,14 @@
   {"name": "prompt_template_name", "type": "STRING"},
   {"name": "prompt", "type": "STRING"},
   {"name": "response", "type": "STRING"},
+  {"name": "reasoning_content", "type": "STRING"},
   {"name": "latency_ms", "type": "INTEGER"},
   {"name": "input_tokens", "type": "INTEGER"},
   {"name": "output_tokens", "type": "INTEGER"},
   {"name": "input_cost", "type": "FLOAT64"},
   {"name": "output_cost", "type": "FLOAT64"},
   {"name": "error", "type": "STRING"},
-  {"name": "success", "type": "BOOLEAN"}
+  {"name": "success", "type": "BOOLEAN"},
+  {"name": "collection_id", "type": "STRING"},
+  {"name": "collection_version", "type": "INTEGER"}
 ]
