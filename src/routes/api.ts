@@ -398,24 +398,30 @@ api.post('/collections', async (c) => {
   // Render the prompt text
   const promptText = template.template.replace(/\{topic\}/gi, topicName);
 
-  const { collection } = await createCollection(c.env.DB, {
-    topic_id: body.topic_id,
-    template_id: body.template_id,
-    prompt_text: promptText,
-    display_name: body.display_name,
-    model_ids: body.model_ids,
-    schedule_type: body.schedule_type,
-    cron_expression: body.cron_expression,
-  });
+  try {
+    const { collection } = await createCollection(c.env.DB, {
+      topic_id: body.topic_id,
+      template_id: body.template_id,
+      prompt_text: promptText,
+      display_name: body.display_name,
+      model_ids: body.model_ids,
+      schedule_type: body.schedule_type,
+      cron_expression: body.cron_expression,
+    });
 
-  // Run collection immediately (fire and forget - don't block response)
-  // This ensures the user sees initial responses right away
-  runCollectionInternal(c.env, c.env.DB, collection.id).catch((err) => {
-    console.error('Failed to run collection immediately:', err);
-  });
+    // Run collection immediately (fire and forget - don't block response)
+    // This ensures the user sees initial responses right away
+    runCollectionInternal(c.env, c.env.DB, collection.id).catch((err) => {
+      console.error('Failed to run collection immediately:', err);
+    });
 
-  const collectionWithDetails = await getCollection(c.env.DB, collection.id);
-  return c.json({ collection: collectionWithDetails, created: true }, 201);
+    const collectionWithDetails = await getCollection(c.env.DB, collection.id);
+    return c.json({ collection: collectionWithDetails, created: true }, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to create collection';
+    console.error('Collection creation failed:', err);
+    return c.json({ error: message }, 500);
+  }
 });
 
 // Update collection (creates new version if models/schedule change)
