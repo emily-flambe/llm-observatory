@@ -14,14 +14,21 @@ make deploy     # Deploy to Cloudflare
 
 ## Git Workflow
 
+**Main branch is protected.** All changes require a pull request - you cannot push directly to main. Create PRs immediately after your first commit, not as an afterthought.
+
 **ALWAYS use git worktrees for ALL work.** Never work directly on the main repository directory.
 
 ```bash
+# 1. Create worktree and branch
 git fetch origin
 git worktree add ../llm-observatory-feature-x -b feature-x origin/main
 cd ../llm-observatory-feature-x
 make setup
 cp ../llm-observatory/.dev.vars .dev.vars  # CRITICAL: Copy AFTER make setup (it overwrites)
+
+# 2. After first commit, immediately push and create PR
+git push -u origin feature-x
+gh pr create --fill  # Creates draft PR for review
 ```
 
 **CRITICAL: Copy `.dev.vars` AFTER `make setup`.** The setup script copies `.dev.vars.example` which will overwrite your copy.

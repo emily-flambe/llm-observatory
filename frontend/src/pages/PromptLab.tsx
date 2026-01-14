@@ -56,18 +56,35 @@ export default function PromptLab() {
           }
         }
 
-        // Otherwise auto-select the most recent model per company
+        // Otherwise auto-select a preferred model per company
         const byCompany = new Map<string, Model>();
         for (const model of modelList) {
           const existing = byCompany.get(model.company);
           if (!existing) {
             byCompany.set(model.company, model);
           } else {
-            // Compare release dates - pick the newest
-            const existingDate = existing.released_at || '';
-            const modelDate = model.released_at || '';
-            if (modelDate > existingDate) {
-              byCompany.set(model.company, model);
+            // For Anthropic, prefer the most recent Haiku model
+            if (model.company === 'Anthropic') {
+              const isHaiku = model.model_name.toLowerCase().includes('haiku');
+              const existingIsHaiku = existing.model_name.toLowerCase().includes('haiku');
+              if (isHaiku && !existingIsHaiku) {
+                byCompany.set(model.company, model);
+              } else if (isHaiku && existingIsHaiku) {
+                // Both are Haiku - pick the newest
+                const existingDate = existing.released_at || '';
+                const modelDate = model.released_at || '';
+                if (modelDate > existingDate) {
+                  byCompany.set(model.company, model);
+                }
+              }
+              // If existing is Haiku and this isn't, keep existing
+            } else {
+              // For other companies, pick the newest release
+              const existingDate = existing.released_at || '';
+              const modelDate = model.released_at || '';
+              if (modelDate > existingDate) {
+                byCompany.set(model.company, model);
+              }
             }
           }
         }
