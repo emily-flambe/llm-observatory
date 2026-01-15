@@ -48,6 +48,7 @@ const PROVIDER_MAP: Record<string, string> = {
   anthropic: 'anthropic',
   google: 'google',
   xai: 'xai',
+  cloudflare: 'cloudflare-workers-ai',
 };
 
 export interface MetadataSyncResult {
@@ -70,7 +71,7 @@ export async function syncBasellmMetadata(env: Env): Promise<MetadataSyncResult>
     let modelsUpdated = 0;
 
     // Process each provider we care about
-    for (const basellmProvider of Object.values(PROVIDER_MAP)) {
+    for (const [, basellmProvider] of Object.entries(PROVIDER_MAP)) {
       const providerData = data[basellmProvider];
       if (!providerData?.models) continue;
 
@@ -81,7 +82,11 @@ export async function syncBasellmMetadata(env: Env): Promise<MetadataSyncResult>
         const releasedAt = model.release_date ? normalizeDate(model.release_date) : null;
         const knowledgeCutoff = model.knowledge || null;
 
-        const result = await updateModelMetadata(env.DB, model.id, {
+        // For cloudflare, use model.name (full @cf/... path) since that's what we store as model_name
+        const modelName =
+          basellmProvider === 'cloudflare-workers-ai' ? model.name : model.id;
+
+        const result = await updateModelMetadata(env.DB, modelName, {
           released_at: releasedAt,
           knowledge_cutoff: knowledgeCutoff,
         });
