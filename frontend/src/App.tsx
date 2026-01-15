@@ -160,7 +160,7 @@ function CollectManagePage() {
         </div>
       ) : collections.length === 0 ? (
         <div className="text-center py-20 text-ink-muted">
-          No collections yet. Use the Create tab to create your first collection.
+          No collections yet. Use the New tab to create your first collection.
         </div>
       ) : (
         <div className="space-y-4">
@@ -199,7 +199,7 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
             </span>
           </div>
           <Link
-            to={`/prompt-lab?prompt=${encodeURIComponent(query.prompt)}&models=${query.responses.map((r) => r.model).join(',')}`}
+            to={`/collect?prompt=${encodeURIComponent(query.prompt)}`}
             className="text-xs text-amber hover:text-amber-dark"
           >
             Use Prompt
@@ -511,7 +511,7 @@ function PromptsContent({
         <div className="text-center py-20 text-ink-muted">
           {hasActiveFilters || filters.search
             ? 'No prompts match the current filters'
-            : 'No prompts yet. Use the Prompt Lab to submit prompts.'}
+            : 'No prompts yet. Use the Collect page to run prompts.'}
         </div>
       ) : (
         <div className="space-y-4">
@@ -871,7 +871,7 @@ function CollectionDetailPage() {
                 </button>
               )}
               <Link
-                to={`/collect/edit/${collection.id}`}
+                to={`/collect/${collection.id}`}
                 className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-white"
               >
                 Edit
