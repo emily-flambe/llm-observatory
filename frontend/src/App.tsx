@@ -9,40 +9,37 @@ import {
   useParams,
   Link,
 } from 'react-router-dom';
-import CollectionForm from './components/CollectionForm';
+import ObservationForm from './components/ObservationForm';
 import Landing from './pages/Landing';
-import PromptLab from './pages/PromptLab';
 import { parseBigQueryTimestamp } from './utils/date';
 import { renderMarkdown } from './utils/markdown';
 import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection, CollectionsResponse } from './types';
 
 function CollectNavTabs() {
   const pathname = window.location.pathname;
-  // Manage tab is active for /collect/manage, /collect/edit/*, and /collect/:id (but not /collect/create)
   const isManageActive = pathname === '/collect/manage' ||
-    pathname.startsWith('/collect/edit') ||
-    (pathname.startsWith('/collect/') && pathname !== '/collect/create' && !pathname.startsWith('/collect/edit'));
+    (pathname.startsWith('/collect/') && pathname !== '/collect' && !pathname.match(/^\/collect\/[^/]+$/));
 
   return (
     <div className="flex gap-1 mb-6 border-b border-border">
       <NavLink
-        to="/collect/create"
+        to="/collect"
+        end
         className={({ isActive }) =>
           `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
             isActive ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
           }`
         }
       >
-        Create
+        New
       </NavLink>
       <NavLink
         to="/collect/manage"
-        end={false}
-        className={() => {
-          return `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
+        className={() =>
+          `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
             isManageActive ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
-          }`;
-        }}
+          }`
+        }
       >
         Manage
       </NavLink>
@@ -50,21 +47,11 @@ function CollectNavTabs() {
   );
 }
 
-function CollectCreatePage() {
+function CollectNewPage() {
   return (
     <div>
       <CollectNavTabs />
-      <CollectionForm />
-    </div>
-  );
-}
-
-function CollectEditPage() {
-  const { id } = useParams<{ id: string }>();
-  return (
-    <div>
-      <CollectNavTabs />
-      <CollectionForm editId={id} />
+      <ObservationForm />
     </div>
   );
 }
@@ -1029,18 +1016,6 @@ function Layout({ children }: { children: React.ReactNode }) {
                 Home
               </NavLink>
               <NavLink
-                to="/prompt-lab"
-                className={({ isActive }) =>
-                  `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
-                    isActive
-                      ? 'bg-amber text-white'
-                      : 'bg-white text-ink-light hover:bg-paper-dark'
-                  }`
-                }
-              >
-                Prompt Lab
-              </NavLink>
-              <NavLink
                 to="/collect"
                 className={({ isActive }) =>
                   `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
@@ -1099,12 +1074,9 @@ export default function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<Landing />} />
-          <Route path="/prompt-lab" element={<PromptLab />} />
           {/* Collect routes */}
-          <Route path="/collect" element={<Navigate to="/collect/create" replace />} />
-          <Route path="/collect/create" element={<CollectCreatePage />} />
+          <Route path="/collect" element={<CollectNewPage />} />
           <Route path="/collect/manage" element={<CollectManagePage />} />
-          <Route path="/collect/edit/:id" element={<CollectEditPage />} />
           <Route path="/collect/:id" element={<CollectionDetailPage />} />
           {/* Browse routes */}
           <Route path="/browse" element={<Navigate to="/browse/prompts" replace />} />
