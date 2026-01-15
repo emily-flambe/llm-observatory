@@ -94,16 +94,10 @@ function formatBoolean(val: number | null): string {
   return val === 1 ? 'Yes' : 'No';
 }
 
-type ReleaseDatePreset = 'any' | 'last6months' | 'lastyear' | 'thisyear' | 'prevyear' | 'older' | 'custom';
-
 interface ReleaseDateFilter {
-  preset: ReleaseDatePreset;
-  customFrom: string;
-  customTo: string;
+  from: string;
+  to: string;
 }
-
-// Get current year for dynamic presets
-const CURRENT_YEAR = new Date().getFullYear();
 
 // Parse date string to comparable date string (YYYY-MM-DD) without timezone issues
 function toComparableDate(dateStr: string): string {
@@ -115,39 +109,6 @@ function toComparableDate(dateStr: string): string {
   const date = new Date(dateStr);
   return date.toISOString().split('T')[0];
 }
-
-function getDateRangeForPreset(preset: ReleaseDatePreset): { from: string | null; to: string | null } {
-  switch (preset) {
-    case 'last6months': {
-      const from = new Date();
-      from.setMonth(from.getMonth() - 6);
-      return { from: from.toISOString().split('T')[0], to: null };
-    }
-    case 'lastyear': {
-      const from = new Date();
-      from.setFullYear(from.getFullYear() - 1);
-      return { from: from.toISOString().split('T')[0], to: null };
-    }
-    case 'thisyear':
-      return { from: `${CURRENT_YEAR}-01-01`, to: `${CURRENT_YEAR}-12-31` };
-    case 'prevyear':
-      return { from: `${CURRENT_YEAR - 1}-01-01`, to: `${CURRENT_YEAR - 1}-12-31` };
-    case 'older':
-      return { from: null, to: `${CURRENT_YEAR - 2}-12-31` };
-    default:
-      return { from: null, to: null };
-  }
-}
-
-const RELEASE_DATE_OPTIONS: { value: ReleaseDatePreset; label: string }[] = [
-  { value: 'any', label: 'Any' },
-  { value: 'last6months', label: 'Last 6 months' },
-  { value: 'lastyear', label: 'Last year' },
-  { value: 'thisyear', label: String(CURRENT_YEAR) },
-  { value: 'prevyear', label: String(CURRENT_YEAR - 1) },
-  { value: 'older', label: `Before ${CURRENT_YEAR - 1}` },
-  { value: 'custom', label: 'Custom...' },
-];
 
 function parseModalities(jsonStr: string | null): string[] {
   if (!jsonStr) return [];
@@ -293,92 +254,32 @@ function ColumnPicker({
   );
 }
 
-// Release Date dropdown component
-function ReleaseDateDropdown({
+// Release Date range filter component
+function DateRangeFilter({
   value,
   onChange,
 }: {
   value: ReleaseDateFilter;
   onChange: (value: ReleaseDateFilter) => void;
 }) {
-  const [open, setOpen] = useState(false);
-
-  const handlePresetChange = (preset: ReleaseDatePreset) => {
-    onChange({ ...value, preset });
-    if (preset !== 'custom') {
-      setOpen(false);
-    }
-  };
-
-  const selectedLabel = RELEASE_DATE_OPTIONS.find((o) => o.value === value.preset)?.label || 'Any';
-
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="px-3 py-2 border border-border rounded-lg text-sm bg-white flex items-center gap-2 min-w-[140px]"
-      >
-        <span className="flex-1 text-left truncate">
-          {value.preset === 'any' ? 'Release Date' : selectedLabel}
-        </span>
-        <svg
-          className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute top-full left-0 mt-1 bg-white border border-border rounded-lg shadow-lg z-20 min-w-[200px]">
-            {RELEASE_DATE_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => handlePresetChange(option.value)}
-                className={`w-full text-left px-3 py-2 text-sm hover:bg-paper ${
-                  value.preset === option.value ? 'bg-paper font-medium' : ''
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-            {value.preset === 'custom' && (
-              <div className="px-3 py-2 border-t border-border space-y-2">
-                <div>
-                  <label htmlFor="release-date-from" className="text-xs text-ink-muted">From</label>
-                  <input
-                    id="release-date-from"
-                    type="date"
-                    value={value.customFrom}
-                    onChange={(e) => onChange({ ...value, customFrom: e.target.value })}
-                    aria-label="Release date from"
-                    className="w-full px-2 py-1 border border-border rounded text-sm"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="release-date-to" className="text-xs text-ink-muted">To</label>
-                  <input
-                    id="release-date-to"
-                    type="date"
-                    value={value.customTo}
-                    onChange={(e) => onChange({ ...value, customTo: e.target.value })}
-                    aria-label="Release date to"
-                    className="w-full px-2 py-1 border border-border rounded text-sm"
-                  />
-                </div>
-                {value.customFrom && value.customTo && value.customFrom > value.customTo && (
-                  <div className="text-xs text-amber">Dates will be swapped when filtering</div>
-                )}
-              </div>
-            )}
-          </div>
-        </>
-      )}
+    <div className="flex items-center gap-2 text-sm">
+      <span className="text-ink-muted whitespace-nowrap">Released:</span>
+      <input
+        type="date"
+        value={value.from}
+        onChange={(e) => onChange({ ...value, from: e.target.value })}
+        aria-label="Release date from"
+        className="px-2 py-1.5 border border-border rounded-lg text-sm bg-white"
+      />
+      <span className="text-ink-muted">to</span>
+      <input
+        type="date"
+        value={value.to}
+        onChange={(e) => onChange({ ...value, to: e.target.value })}
+        aria-label="Release date to"
+        className="px-2 py-1.5 border border-border rounded-lg text-sm bg-white"
+      />
     </div>
   );
 }
@@ -549,14 +450,10 @@ export default function ExploreModels() {
     if (param === 'no') return 'no';
     return 'both';
   };
-  const getInitialReleaseDate = (): ReleaseDateFilter => {
-    const preset = (searchParams.get('releasePreset') as ReleaseDatePreset) || 'any';
-    return {
-      preset,
-      customFrom: searchParams.get('releaseFrom') || '',
-      customTo: searchParams.get('releaseTo') || '',
-    };
-  };
+  const getInitialReleaseDate = (): ReleaseDateFilter => ({
+    from: searchParams.get('releaseFrom') || '',
+    to: searchParams.get('releaseTo') || '',
+  });
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState(getInitialSearchQuery);
@@ -581,13 +478,8 @@ export default function ExploreModels() {
     if (selectedCompanies.size > 0) params.set('companies', Array.from(selectedCompanies).join(','));
     if (selectedFamilies.size > 0) params.set('families', Array.from(selectedFamilies).join(','));
     if (reasoning !== 'both') params.set('reasoning', reasoning);
-    if (releaseDate.preset !== 'any') {
-      params.set('releasePreset', releaseDate.preset);
-      if (releaseDate.preset === 'custom') {
-        if (releaseDate.customFrom) params.set('releaseFrom', releaseDate.customFrom);
-        if (releaseDate.customTo) params.set('releaseTo', releaseDate.customTo);
-      }
-    }
+    if (releaseDate.from) params.set('releaseFrom', releaseDate.from);
+    if (releaseDate.to) params.set('releaseTo', releaseDate.to);
 
     setSearchParams(params, { replace: true });
   }, [searchQuery, selectedCompanies, selectedFamilies, reasoning, releaseDate, setSearchParams]);
@@ -646,49 +538,27 @@ export default function ExploreModels() {
     }
 
     // Filter by release date (using string comparison for consistency)
-    if (releaseDate.preset !== 'any') {
-      if (releaseDate.preset === 'custom') {
-        // Custom date range - validate and normalize
-        let fromDate = releaseDate.customFrom;
-        let toDate = releaseDate.customTo;
+    let fromDate = releaseDate.from;
+    let toDate = releaseDate.to;
 
-        // Swap if from > to (auto-correct invalid range)
-        if (fromDate && toDate && fromDate > toDate) {
-          [fromDate, toDate] = [toDate, fromDate];
-        }
+    // Swap if from > to (auto-correct invalid range)
+    if (fromDate && toDate && fromDate > toDate) {
+      [fromDate, toDate] = [toDate, fromDate];
+    }
 
-        if (fromDate) {
-          result = result.filter((m) => {
-            if (!m.released_at) return false;
-            const modelDate = toComparableDate(m.released_at);
-            return modelDate >= fromDate;
-          });
-        }
-        if (toDate) {
-          result = result.filter((m) => {
-            if (!m.released_at) return false;
-            const modelDate = toComparableDate(m.released_at);
-            return modelDate <= toDate;
-          });
-        }
-      } else {
-        // Preset date range - uses string comparison
-        const { from, to } = getDateRangeForPreset(releaseDate.preset);
-        if (from) {
-          result = result.filter((m) => {
-            if (!m.released_at) return false;
-            const modelDate = toComparableDate(m.released_at);
-            return modelDate >= from;
-          });
-        }
-        if (to) {
-          result = result.filter((m) => {
-            if (!m.released_at) return false;
-            const modelDate = toComparableDate(m.released_at);
-            return modelDate <= to;
-          });
-        }
-      }
+    if (fromDate) {
+      result = result.filter((m) => {
+        if (!m.released_at) return false;
+        const modelDate = toComparableDate(m.released_at);
+        return modelDate >= fromDate;
+      });
+    }
+    if (toDate) {
+      result = result.filter((m) => {
+        if (!m.released_at) return false;
+        const modelDate = toComparableDate(m.released_at);
+        return modelDate <= toDate;
+      });
     }
 
     // Filter by search query
@@ -807,14 +677,15 @@ export default function ExploreModels() {
     selectedCompanies.size > 0 ||
     selectedFamilies.size > 0 ||
     reasoning !== 'both' ||
-    releaseDate.preset !== 'any' ||
+    releaseDate.from !== '' ||
+    releaseDate.to !== '' ||
     searchQuery.trim() !== '';
 
   const clearFilters = () => {
     setSelectedCompanies(new Set());
     setSelectedFamilies(new Set());
     setReasoning('both');
-    setReleaseDate({ preset: 'any', customFrom: '', customTo: '' });
+    setReleaseDate({ from: '', to: '' });
     setSearchQuery('');
   };
 
@@ -913,7 +784,7 @@ export default function ExploreModels() {
           onChange={setReasoning}
         />
 
-        <ReleaseDateDropdown value={releaseDate} onChange={setReleaseDate} />
+        <DateRangeFilter value={releaseDate} onChange={setReleaseDate} />
 
         {hasActiveFilters && (
           <button
