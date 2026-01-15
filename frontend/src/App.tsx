@@ -13,7 +13,7 @@ import ObservationForm from './components/ObservationForm';
 import Landing from './pages/Landing';
 import { parseBigQueryTimestamp } from './utils/date';
 import { renderMarkdown } from './utils/markdown';
-import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection, CollectionsResponse } from './types';
+import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection } from './types';
 
 function CollectNavTabs() {
   const pathname = window.location.pathname;
@@ -117,14 +117,14 @@ function CollectManagePage() {
   const [showDisabled, setShowDisabled] = useState(false);
 
   useEffect(() => {
-    fetch(`/api/collections?includeDisabled=${showDisabled}`)
+    fetch(`/api/observations?includeDisabled=${showDisabled}`)
       .then(async (res) => {
-        const data = (await res.json()) as { error?: string } & CollectionsResponse;
-        if (!res.ok) throw new Error(data.error || 'Failed to load collections');
+        const data = (await res.json()) as { error?: string; observations?: Collection[] };
+        if (!res.ok) throw new Error(data.error || 'Failed to load observations');
         return data;
       })
       .then((data) => {
-        setCollections(data.collections || []);
+        setCollections(data.observations || []);
         setError(null);
       })
       .catch((err: Error) => {
@@ -147,20 +147,20 @@ function CollectManagePage() {
             onChange={(e) => setShowDisabled(e.target.checked)}
             className="rounded border-border text-amber focus:ring-amber"
           />
-          Show disabled collections
+          Show disabled observations
         </label>
       </div>
 
       {loading ? (
-        <div className="text-center py-20 text-ink-muted">Loading collections...</div>
+        <div className="text-center py-20 text-ink-muted">Loading observations...</div>
       ) : error ? (
         <div className="text-center py-20">
-          <div className="text-error mb-2">Failed to load collections</div>
+          <div className="text-error mb-2">Failed to load observations</div>
           <div className="text-sm text-ink-muted">{error}</div>
         </div>
       ) : collections.length === 0 ? (
         <div className="text-center py-20 text-ink-muted">
-          No collections yet. Use the New tab to create your first collection.
+          No observations yet. Use the New tab to create your first observation.
         </div>
       ) : (
         <div className="space-y-4">
