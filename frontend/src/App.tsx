@@ -11,6 +11,7 @@ import {
 } from 'react-router-dom';
 import ObservationForm from './components/ObservationForm';
 import Landing from './pages/Landing';
+import ExploreModels from './pages/ExploreModels';
 import { parseBigQueryTimestamp } from './utils/date';
 import { renderMarkdown } from './utils/markdown';
 import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection } from './types';
@@ -1016,6 +1017,18 @@ function Layout({ children }: { children: React.ReactNode }) {
                 Home
               </NavLink>
               <NavLink
+                to="/models"
+                className={({ isActive }) =>
+                  `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
+                    isActive
+                      ? 'bg-amber text-white'
+                      : 'bg-white text-ink-light hover:bg-paper-dark'
+                  }`
+                }
+              >
+                Models
+              </NavLink>
+              <NavLink
                 to="/collect"
                 className={({ isActive }) =>
                   `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
@@ -1074,6 +1087,7 @@ export default function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/models" element={<ExploreModels />} />
           {/* Collect routes */}
           <Route path="/collect" element={<CollectNewPage />} />
           <Route path="/collect/manage" element={<CollectManagePage />} />

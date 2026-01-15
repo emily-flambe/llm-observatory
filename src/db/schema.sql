@@ -36,6 +36,16 @@ CREATE TABLE IF NOT EXISTS models (
     knowledge_cutoff TEXT,                -- Training data cutoff date (from basellm, e.g. "2024-04")
     input_price_per_m REAL,               -- Cost per million input tokens (USD)
     output_price_per_m REAL,              -- Cost per million output tokens (USD)
+    description TEXT,                     -- Model description (from basellm)
+    family TEXT,                          -- Model family (from basellm)
+    context_window INTEGER,               -- Context window size in tokens (from basellm)
+    max_output_tokens INTEGER,            -- Maximum output tokens (from basellm)
+    supports_reasoning INTEGER,           -- 1 if reasoning model, 0 otherwise (from basellm)
+    supports_tool_calls INTEGER,          -- 1 if supports tool/function calls (from basellm)
+    supports_attachments INTEGER,         -- 1 if supports file attachments (from basellm)
+    open_weights INTEGER,                 -- 1 if open source/weights (from basellm)
+    input_modalities TEXT,                -- JSON array of input modalities (from basellm)
+    output_modalities TEXT,               -- JSON array of output modalities (from basellm)
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
 );

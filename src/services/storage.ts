@@ -33,6 +33,16 @@ export interface Model {
   knowledge_cutoff: string | null;
   input_price_per_m: number | null; // USD per million input tokens
   output_price_per_m: number | null; // USD per million output tokens
+  description: string | null;
+  family: string | null;
+  context_window: number | null;
+  max_output_tokens: number | null;
+  supports_reasoning: number | null; // 0/1 boolean
+  supports_tool_calls: number | null; // 0/1 boolean
+  supports_attachments: number | null; // 0/1 boolean
+  open_weights: number | null; // 0/1 boolean
+  input_modalities: string | null; // JSON array as string
+  output_modalities: string | null; // JSON array as string
   created_at: string;
   updated_at: string;
 }
@@ -248,6 +258,16 @@ export async function updateModelMetadata(
   metadata: {
     released_at?: string | null;
     knowledge_cutoff?: string | null;
+    description?: string | null;
+    family?: string | null;
+    context_window?: number | null;
+    max_output_tokens?: number | null;
+    supports_reasoning?: number | null;
+    supports_tool_calls?: number | null;
+    supports_attachments?: number | null;
+    open_weights?: number | null;
+    input_modalities?: string | null;
+    output_modalities?: string | null;
   }
 ): Promise<{ updated: boolean }> {
   const now = new Date().toISOString();
@@ -269,10 +289,35 @@ export async function updateModelMetadata(
         `UPDATE models SET
          released_at = COALESCE(?, released_at),
          knowledge_cutoff = COALESCE(?, knowledge_cutoff),
+         description = COALESCE(?, description),
+         family = COALESCE(?, family),
+         context_window = COALESCE(?, context_window),
+         max_output_tokens = COALESCE(?, max_output_tokens),
+         supports_reasoning = COALESCE(?, supports_reasoning),
+         supports_tool_calls = COALESCE(?, supports_tool_calls),
+         supports_attachments = COALESCE(?, supports_attachments),
+         open_weights = COALESCE(?, open_weights),
+         input_modalities = COALESCE(?, input_modalities),
+         output_modalities = COALESCE(?, output_modalities),
          updated_at = ?
          WHERE id = ?`
       )
-      .bind(metadata.released_at ?? null, metadata.knowledge_cutoff ?? null, now, model.id)
+      .bind(
+        metadata.released_at ?? null,
+        metadata.knowledge_cutoff ?? null,
+        metadata.description ?? null,
+        metadata.family ?? null,
+        metadata.context_window ?? null,
+        metadata.max_output_tokens ?? null,
+        metadata.supports_reasoning ?? null,
+        metadata.supports_tool_calls ?? null,
+        metadata.supports_attachments ?? null,
+        metadata.open_weights ?? null,
+        metadata.input_modalities ?? null,
+        metadata.output_modalities ?? null,
+        now,
+        model.id
+      )
       .run();
   }
 

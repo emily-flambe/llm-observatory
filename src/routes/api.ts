@@ -692,10 +692,28 @@ api.post('/prompt-templates', async (c) => {
 // ==================== Models ====================
 
 // List all models
+// By default, filters out non-text models. Use ?includeNonText=true to include all models.
 api.get('/models', async (c) => {
+  const includeNonText = c.req.query('includeNonText') === 'true';
   const models = await getModels(c.env.DB);
+
+  // Filter to text-only models unless includeNonText is true
+  // A model is text-capable if output_modalities is null (backwards compat) or contains "text"
+  const filteredModels = includeNonText
+    ? models
+    : models.filter((m) => {
+        if (m.output_modalities === null) return true;
+        try {
+          const modalities = JSON.parse(m.output_modalities) as string[];
+          return modalities.includes('text');
+        } catch {
+          // If parsing fails, include the model (backwards compat)
+          return true;
+        }
+      });
+
   // Add computed company field (actual creator, not hosting provider)
-  const modelsWithCompany = models.map((m) => ({
+  const modelsWithCompany = filteredModels.map((m) => ({
     ...m,
     company: extractCompany(m.provider, m.model_name),
   }));
