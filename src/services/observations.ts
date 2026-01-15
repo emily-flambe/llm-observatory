@@ -354,3 +354,133 @@ export async function updateObservationLastRunAt(db: D1Database, id: string): Pr
   const now = new Date().toISOString();
   await db.prepare('UPDATE observations SET last_run_at = ? WHERE id = ?').bind(now, id).run();
 }
+
+// ==================== Observation Runs ====================
+
+export interface ObservationRun {
+  id: string;
+  observation_id: string;
+  observation_version: number;
+  run_at: string;
+}
+
+export interface ObservationRunResult {
+  id: string;
+  run_id: string;
+  model_id: string;
+  response: string | null;
+  error: string | null;
+  latency_ms: number;
+  input_tokens: number;
+  output_tokens: number;
+  success: number;
+}
+
+export interface ObservationRunWithResults extends ObservationRun {
+  results: Array<ObservationRunResult & { model_name?: string; display_name?: string; company?: string }>;
+}
+
+/**
+ * Create a new observation run and its results
+ */
+export async function createObservationRun(
+  db: D1Database,
+  observationId: string,
+  observationVersion: number,
+  results: Array<{
+    modelId: string;
+    response?: string;
+    error?: string;
+    latencyMs: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    success: boolean;
+  }>
+): Promise<ObservationRun> {
+  const runId = crypto.randomUUID();
+  const runAt = new Date().toISOString();
+
+  // Create the run record
+  await db
+    .prepare(
+      'INSERT INTO observation_runs (id, observation_id, observation_version, run_at) VALUES (?, ?, ?, ?)'
+    )
+    .bind(runId, observationId, observationVersion, runAt)
+    .run();
+
+  // Create result records
+  for (const result of results) {
+    const resultId = crypto.randomUUID();
+    await db
+      .prepare(
+        `INSERT INTO observation_run_results
+         (id, run_id, model_id, response, error, latency_ms, input_tokens, output_tokens, success)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        resultId,
+        runId,
+        result.modelId,
+        result.response ?? null,
+        result.error ?? null,
+        result.latencyMs,
+        result.inputTokens ?? 0,
+        result.outputTokens ?? 0,
+        result.success ? 1 : 0
+      )
+      .run();
+  }
+
+  return {
+    id: runId,
+    observation_id: observationId,
+    observation_version: observationVersion,
+    run_at: runAt,
+  };
+}
+
+/**
+ * Get all runs for an observation with their results
+ */
+export async function getObservationRuns(
+  db: D1Database,
+  observationId: string,
+  limit = 50
+): Promise<ObservationRunWithResults[]> {
+  // Get runs
+  const runs = await db
+    .prepare(
+      `SELECT * FROM observation_runs
+       WHERE observation_id = ?
+       ORDER BY run_at DESC
+       LIMIT ?`
+    )
+    .bind(observationId, limit)
+    .all<ObservationRun>();
+
+  if (!runs.results.length) {
+    return [];
+  }
+
+  // Get results for each run with model info
+  const runsWithResults: ObservationRunWithResults[] = [];
+  for (const run of runs.results) {
+    const results = await db
+      .prepare(
+        `SELECT r.*, m.model_name, m.display_name, m.provider as company
+         FROM observation_run_results r
+         LEFT JOIN models m ON r.model_id = m.id
+         WHERE r.run_id = ?
+         ORDER BY m.provider, m.display_name`
+      )
+      .bind(run.id)
+      .all<ObservationRunResult & { model_name?: string; display_name?: string; company?: string }>();
+
+    runsWithResults.push({
+      ...run,
+      results: results.results,
+    });
+  }
+
+  return runsWithResults;
+}

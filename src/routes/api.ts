@@ -48,6 +48,8 @@ import {
   getObservationTags,
   getObservationVersions,
   updateObservationLastRunAt,
+  createObservationRun,
+  getObservationRuns,
 } from '../services/observations';
 
 type Variables = {
@@ -439,8 +441,12 @@ async function runObservationInternal(
       observation_id: observation.id,
       observation_version: observation.current_version,
     };
-    insertRow(env, bqRow).catch((err) => {
-      console.error('Failed to save observation response to BigQuery:', err);
+    insertRow(env, bqRow).then((result) => {
+      if (!result.success) {
+        console.error('Failed to save observation response to BigQuery:', result.error);
+      }
+    }).catch((err) => {
+      console.error('BigQuery insert exception:', err);
     });
 
     return errorMsg
@@ -449,6 +455,20 @@ async function runObservationInternal(
   });
 
   const results = await Promise.all(modelPromises);
+
+  // Store results in D1 for immediate access (BigQuery has streaming delay)
+  await createObservationRun(
+    db,
+    observationId,
+    observation.current_version,
+    results.map((r) => ({
+      modelId: r.modelId,
+      response: r.success ? r.response : undefined,
+      error: r.success ? undefined : r.error,
+      latencyMs: r.latencyMs ?? 0,
+      success: r.success,
+    }))
+  );
 
   // Update last_run_at
   await updateObservationLastRunAt(db, observationId);
@@ -628,23 +648,37 @@ api.put('/observations/:id/restore', async (c) => {
 api.get('/observations/:id/responses', async (c) => {
   const { id } = c.req.param();
   const limitParam = c.req.query('limit');
-  const limit = limitParam ? parseInt(limitParam, 10) : 100;
+  const limit = limitParam ? parseInt(limitParam, 10) : 50;
 
-  // Verify observation exists and get its prompt text
+  // Verify observation exists
   const observation = await getObservation(c.env.DB, id);
   if (!observation) {
     return c.json({ error: 'Observation not found' }, 404);
   }
 
-  // Get responses from BigQuery by prompt text
-  const { getObservationResponses } = await import('../services/bigquery');
-  const result = await getObservationResponses(c.env, observation.prompt_text, { limit });
-  if (!result.success) {
-    console.error('Failed to get observation responses:', result.error);
-    return c.json({ prompts: [] });
-  }
+  // Get runs from D1 (immediate, no BigQuery streaming delay)
+  const runs = await getObservationRuns(c.env.DB, id, limit);
 
-  return c.json({ prompts: result.data });
+  // Transform to match expected format
+  const prompts = runs.map((run) => ({
+    group_id: run.id,
+    prompt: observation.prompt_text,
+    collected_at: run.run_at,
+    source: 'observation',
+    responses: run.results.map((r) => ({
+      id: r.id,
+      model: r.model_name ?? r.model_id,
+      company: r.company ?? '',
+      response: r.response,
+      latency_ms: r.latency_ms,
+      input_tokens: r.input_tokens,
+      output_tokens: r.output_tokens,
+      error: r.error,
+      success: r.success === 1,
+    })),
+  }));
+
+  return c.json({ prompts });
 });
 
 // ==================== Prompt Templates ====================
