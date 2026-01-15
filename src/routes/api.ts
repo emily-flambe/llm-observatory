@@ -351,7 +351,7 @@ async function runObservationInternal(
 ): Promise<{
   success: boolean;
   error?: string;
-  results?: Array<{ modelId: string; success: boolean; latencyMs?: number; error?: string }>;
+  results?: Array<{ modelId: string; success: boolean; latencyMs?: number; error?: string; response?: string }>;
 }> {
   const observation = await getObservation(db, observationId);
   if (!observation) {
@@ -445,7 +445,7 @@ async function runObservationInternal(
 
     return errorMsg
       ? ({ modelId, success: false, error: errorMsg } as const)
-      : ({ modelId, success: true, latencyMs } as const);
+      : ({ modelId, success: true, latencyMs, response: responseContent ?? undefined } as const);
   });
 
   const results = await Promise.all(modelPromises);
@@ -630,17 +630,16 @@ api.get('/observations/:id/responses', async (c) => {
   const limitParam = c.req.query('limit');
   const limit = limitParam ? parseInt(limitParam, 10) : 100;
 
-  // Verify observation exists
+  // Verify observation exists and get its prompt text
   const observation = await getObservation(c.env.DB, id);
   if (!observation) {
     return c.json({ error: 'Observation not found' }, 404);
   }
 
-  // Get responses from BigQuery
+  // Get responses from BigQuery by prompt text
   const { getObservationResponses } = await import('../services/bigquery');
-  const result = await getObservationResponses(c.env, id, { limit });
+  const result = await getObservationResponses(c.env, observation.prompt_text, { limit });
   if (!result.success) {
-    // If BigQuery query fails (e.g., observation_id column doesn't exist yet), return empty array
     console.error('Failed to get observation responses:', result.error);
     return c.json({ prompts: [] });
   }

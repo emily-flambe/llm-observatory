@@ -1053,11 +1053,11 @@ export async function getCollectionResponses(
 }
 
 /**
- * Get responses for a specific observation from BigQuery
+ * Get responses for a specific observation from BigQuery by prompt text
  */
 export async function getObservationResponses(
   env: BigQueryEnv,
-  observationId: string,
+  promptText: string,
   options: { limit?: number } = {}
 ): Promise<BigQueryResult<PromptLabQuery[]>> {
   const tokenResult = await getAccessToken(env);
@@ -1068,7 +1068,7 @@ export async function getObservationResponses(
   const limit = options.limit ?? 100;
   const url = `https://bigquery.googleapis.com/bigquery/v2/projects/${env.BQ_PROJECT_ID}/queries`;
 
-  // Query all responses for this observation, grouped by prompt_id (each run)
+  // Query all responses matching this prompt text, grouped by prompt_id (each run)
   const query = `
     SELECT
       prompt_id as group_id,
@@ -1090,7 +1090,7 @@ export async function getObservationResponses(
         success
       ) ORDER BY company, model) as responses
     FROM \`${env.BQ_PROJECT_ID}.${env.BQ_DATASET_ID}.${env.BQ_TABLE_ID}\`
-    WHERE observation_id = @observation_id
+    WHERE prompt = @prompt_text
     GROUP BY prompt_id
     ORDER BY collected_at DESC
     LIMIT @limit
@@ -1109,9 +1109,9 @@ export async function getObservationResponses(
         parameterMode: 'NAMED',
         queryParameters: [
           {
-            name: 'observation_id',
+            name: 'prompt_text',
             parameterType: { type: 'STRING' },
-            parameterValue: { value: observationId },
+            parameterValue: { value: promptText },
           },
           {
             name: 'limit',

@@ -343,7 +343,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
 
         const data = (await res.json()) as {
           observation: { id: string };
-          results?: Array<{ modelId: string; success: boolean; latencyMs?: number; error?: string }>;
+          results?: Array<{ modelId: string; success: boolean; latencyMs?: number; error?: string; response?: string }>;
         };
 
         setCreatedObservationId(data.observation.id);
@@ -360,6 +360,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
                   status: result.success ? 'success' : 'error',
                   latencyMs: result.latencyMs,
                   error: result.error,
+                  response: result.response,
                 });
               }
             }
