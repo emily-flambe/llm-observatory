@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { Model, ModelsResponse } from '../types';
 
 type ColumnKey =
@@ -92,6 +93,48 @@ function formatBoolean(val: number | null): string {
   if (val === null || val === undefined) return '\u2014';
   return val === 1 ? 'Yes' : 'No';
 }
+
+type ReleaseDatePreset = 'any' | 'last6months' | 'lastyear' | '2024' | '2023' | 'older' | 'custom';
+
+interface ReleaseDateFilter {
+  preset: ReleaseDatePreset;
+  customFrom: string;
+  customTo: string;
+}
+
+function getDateRangeForPreset(preset: ReleaseDatePreset): { from: Date | null; to: Date | null } {
+  const now = new Date();
+  switch (preset) {
+    case 'last6months': {
+      const from = new Date(now);
+      from.setMonth(from.getMonth() - 6);
+      return { from, to: null };
+    }
+    case 'lastyear': {
+      const from = new Date(now);
+      from.setFullYear(from.getFullYear() - 1);
+      return { from, to: null };
+    }
+    case '2024':
+      return { from: new Date('2024-01-01'), to: new Date('2024-12-31') };
+    case '2023':
+      return { from: new Date('2023-01-01'), to: new Date('2023-12-31') };
+    case 'older':
+      return { from: null, to: new Date('2022-12-31') };
+    default:
+      return { from: null, to: null };
+  }
+}
+
+const RELEASE_DATE_OPTIONS: { value: ReleaseDatePreset; label: string }[] = [
+  { value: 'any', label: 'Any' },
+  { value: 'last6months', label: 'Last 6 months' },
+  { value: 'lastyear', label: 'Last year' },
+  { value: '2024', label: '2024' },
+  { value: '2023', label: '2023' },
+  { value: 'older', label: 'Older' },
+  { value: 'custom', label: 'Custom...' },
+];
 
 function parseModalities(jsonStr: string | null): string[] {
   if (!jsonStr) return [];
@@ -237,6 +280,112 @@ function ColumnPicker({
   );
 }
 
+// Release Date dropdown component
+function ReleaseDateDropdown({
+  value,
+  onChange,
+}: {
+  value: ReleaseDateFilter;
+  onChange: (value: ReleaseDateFilter) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const handlePresetChange = (preset: ReleaseDatePreset) => {
+    onChange({ ...value, preset });
+    if (preset !== 'custom') {
+      setOpen(false);
+    }
+  };
+
+  const selectedLabel = RELEASE_DATE_OPTIONS.find((o) => o.value === value.preset)?.label || 'Any';
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="px-3 py-2 border border-border rounded-lg text-sm bg-white flex items-center gap-2 min-w-[140px]"
+      >
+        <span className="flex-1 text-left truncate">
+          {value.preset === 'any' ? 'Release Date' : selectedLabel}
+        </span>
+        <svg
+          className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute top-full left-0 mt-1 bg-white border border-border rounded-lg shadow-lg z-20 min-w-[200px]">
+            {RELEASE_DATE_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => handlePresetChange(option.value)}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-paper ${
+                  value.preset === option.value ? 'bg-paper font-medium' : ''
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+            {value.preset === 'custom' && (
+              <div className="px-3 py-2 border-t border-border space-y-2">
+                <div>
+                  <label className="text-xs text-ink-muted">From</label>
+                  <input
+                    type="date"
+                    value={value.customFrom}
+                    onChange={(e) => onChange({ ...value, customFrom: e.target.value })}
+                    className="w-full px-2 py-1 border border-border rounded text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-ink-muted">To</label>
+                  <input
+                    type="date"
+                    value={value.customTo}
+                    onChange={(e) => onChange({ ...value, customTo: e.target.value })}
+                    className="w-full px-2 py-1 border border-border rounded text-sm"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Capability checkbox component
+function CapabilityCheckbox({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-sm cursor-pointer whitespace-nowrap">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="rounded border-border text-amber focus:ring-amber"
+      />
+      <span>{label}</span>
+    </label>
+  );
+}
+
 type SortDirection = 'asc' | 'desc';
 type SortKey = ColumnKey | 'company_display_name';
 
@@ -328,13 +477,42 @@ function ExpandedRowContent({
 }
 
 export default function ExploreModels() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Parse URL params for initial state
+  const getInitialSearchQuery = () => searchParams.get('q') || '';
+  const getInitialCompanies = () => {
+    const companies = searchParams.get('companies');
+    return companies ? new Set(companies.split(',')) : new Set<string>();
+  };
+  const getInitialFamilies = () => {
+    const families = searchParams.get('families');
+    return families ? new Set(families.split(',')) : new Set<string>();
+  };
+  const getInitialCapabilities = () => ({
+    reasoning: searchParams.get('reasoning') === '1',
+    tools: searchParams.get('tools') === '1',
+    attachments: searchParams.get('attachments') === '1',
+    openWeights: searchParams.get('openWeights') === '1',
+  });
+  const getInitialReleaseDate = (): ReleaseDateFilter => {
+    const preset = (searchParams.get('releasePreset') as ReleaseDatePreset) || 'any';
+    return {
+      preset,
+      customFrom: searchParams.get('releaseFrom') || '',
+      customTo: searchParams.get('releaseTo') || '',
+    };
+  };
+
   // Filter state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCompanies, setSelectedCompanies] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState(getInitialSearchQuery);
+  const [selectedCompanies, setSelectedCompanies] = useState<Set<string>>(getInitialCompanies);
+  const [selectedFamilies, setSelectedFamilies] = useState<Set<string>>(getInitialFamilies);
+  const [capabilities, setCapabilities] = useState(getInitialCapabilities);
+  const [releaseDate, setReleaseDate] = useState<ReleaseDateFilter>(getInitialReleaseDate);
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(loadSavedColumns);
 
   // Sort state - default to company ASC, then display_name ASC
@@ -343,6 +521,32 @@ export default function ExploreModels() {
 
   // Expanded rows
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  // Update URL params when filters change
+  const updateUrlParams = useCallback(() => {
+    const params = new URLSearchParams();
+
+    if (searchQuery.trim()) params.set('q', searchQuery.trim());
+    if (selectedCompanies.size > 0) params.set('companies', Array.from(selectedCompanies).join(','));
+    if (selectedFamilies.size > 0) params.set('families', Array.from(selectedFamilies).join(','));
+    if (capabilities.reasoning) params.set('reasoning', '1');
+    if (capabilities.tools) params.set('tools', '1');
+    if (capabilities.attachments) params.set('attachments', '1');
+    if (capabilities.openWeights) params.set('openWeights', '1');
+    if (releaseDate.preset !== 'any') {
+      params.set('releasePreset', releaseDate.preset);
+      if (releaseDate.preset === 'custom') {
+        if (releaseDate.customFrom) params.set('releaseFrom', releaseDate.customFrom);
+        if (releaseDate.customTo) params.set('releaseTo', releaseDate.customTo);
+      }
+    }
+
+    setSearchParams(params, { replace: true });
+  }, [searchQuery, selectedCompanies, selectedFamilies, capabilities, releaseDate, setSearchParams]);
+
+  useEffect(() => {
+    updateUrlParams();
+  }, [updateUrlParams]);
 
   useEffect(() => {
     fetch('/api/models')
@@ -367,6 +571,11 @@ export default function ExploreModels() {
     return [...new Set(models.map((m) => m.company))].sort();
   }, [models]);
 
+  // Extract unique families for the filter dropdown
+  const families = useMemo(() => {
+    return [...new Set(models.map((m) => m.family).filter((f): f is string => !!f))].sort();
+  }, [models]);
+
   // Filter models
   const filteredModels = useMemo(() => {
     let result = models;
@@ -374,6 +583,61 @@ export default function ExploreModels() {
     // Filter by company
     if (selectedCompanies.size > 0) {
       result = result.filter((m) => selectedCompanies.has(m.company));
+    }
+
+    // Filter by family
+    if (selectedFamilies.size > 0) {
+      result = result.filter((m) => m.family && selectedFamilies.has(m.family));
+    }
+
+    // Filter by capabilities (AND logic - must have ALL selected)
+    if (capabilities.reasoning) {
+      result = result.filter((m) => m.supports_reasoning === 1);
+    }
+    if (capabilities.tools) {
+      result = result.filter((m) => m.supports_tool_calls === 1);
+    }
+    if (capabilities.attachments) {
+      result = result.filter((m) => m.supports_attachments === 1);
+    }
+    if (capabilities.openWeights) {
+      result = result.filter((m) => m.open_weights === 1);
+    }
+
+    // Filter by release date
+    if (releaseDate.preset !== 'any') {
+      if (releaseDate.preset === 'custom') {
+        // Custom date range
+        if (releaseDate.customFrom) {
+          const fromDate = new Date(releaseDate.customFrom);
+          result = result.filter((m) => {
+            if (!m.released_at) return false;
+            return new Date(m.released_at) >= fromDate;
+          });
+        }
+        if (releaseDate.customTo) {
+          const toDate = new Date(releaseDate.customTo);
+          result = result.filter((m) => {
+            if (!m.released_at) return false;
+            return new Date(m.released_at) <= toDate;
+          });
+        }
+      } else {
+        // Preset date range
+        const { from, to } = getDateRangeForPreset(releaseDate.preset);
+        if (from) {
+          result = result.filter((m) => {
+            if (!m.released_at) return false;
+            return new Date(m.released_at) >= from;
+          });
+        }
+        if (to) {
+          result = result.filter((m) => {
+            if (!m.released_at) return false;
+            return new Date(m.released_at) <= to;
+          });
+        }
+      }
     }
 
     // Filter by search query
@@ -391,7 +655,7 @@ export default function ExploreModels() {
     }
 
     return result;
-  }, [models, selectedCompanies, searchQuery]);
+  }, [models, selectedCompanies, selectedFamilies, capabilities, releaseDate, searchQuery]);
 
   // Sort models
   const sortedModels = useMemo(() => {
@@ -488,10 +752,26 @@ export default function ExploreModels() {
     });
   };
 
-  const hasActiveFilters = selectedCompanies.size > 0 || searchQuery.trim() !== '';
+  const hasActiveFilters =
+    selectedCompanies.size > 0 ||
+    selectedFamilies.size > 0 ||
+    capabilities.reasoning ||
+    capabilities.tools ||
+    capabilities.attachments ||
+    capabilities.openWeights ||
+    releaseDate.preset !== 'any' ||
+    searchQuery.trim() !== '';
 
   const clearFilters = () => {
     setSelectedCompanies(new Set());
+    setSelectedFamilies(new Set());
+    setCapabilities({
+      reasoning: false,
+      tools: false,
+      attachments: false,
+      openWeights: false,
+    });
+    setReleaseDate({ preset: 'any', customFrom: '', customTo: '' });
     setSearchQuery('');
   };
 
@@ -551,7 +831,7 @@ export default function ExploreModels() {
         </p>
       </div>
 
-      {/* Filters row */}
+      {/* Filters - Row 1 */}
       <div className="flex flex-wrap gap-3 items-center">
         <input
           type="text"
@@ -568,11 +848,47 @@ export default function ExploreModels() {
           onChange={setSelectedCompanies}
         />
 
+        <MultiSelect
+          label="All Families"
+          options={families}
+          selected={selectedFamilies}
+          onChange={setSelectedFamilies}
+        />
+
         <ColumnPicker
           columns={ALL_COLUMNS}
           visibleColumns={visibleColumns}
           onChange={setVisibleColumns}
         />
+      </div>
+
+      {/* Filters - Row 2 */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="flex items-center gap-4 px-3 py-2 border border-border rounded-lg bg-white">
+          <span className="text-sm text-ink-muted">Capabilities:</span>
+          <CapabilityCheckbox
+            label="Reasoning"
+            checked={capabilities.reasoning}
+            onChange={(checked) => setCapabilities((prev) => ({ ...prev, reasoning: checked }))}
+          />
+          <CapabilityCheckbox
+            label="Tools"
+            checked={capabilities.tools}
+            onChange={(checked) => setCapabilities((prev) => ({ ...prev, tools: checked }))}
+          />
+          <CapabilityCheckbox
+            label="Attachments"
+            checked={capabilities.attachments}
+            onChange={(checked) => setCapabilities((prev) => ({ ...prev, attachments: checked }))}
+          />
+          <CapabilityCheckbox
+            label="Open Weights"
+            checked={capabilities.openWeights}
+            onChange={(checked) => setCapabilities((prev) => ({ ...prev, openWeights: checked }))}
+          />
+        </div>
+
+        <ReleaseDateDropdown value={releaseDate} onChange={setReleaseDate} />
 
         {hasActiveFilters && (
           <button
