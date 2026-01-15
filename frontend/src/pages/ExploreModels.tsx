@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { Model, ModelsResponse } from '../types';
 
 type ColumnKey =
@@ -54,7 +54,11 @@ function loadSavedColumns(): Set<ColumnKey> {
 }
 
 function saveColumns(columns: Set<ColumnKey>) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(columns)));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(columns)));
+  } catch {
+    // Ignore storage errors (private browsing, quota exceeded, etc.)
+  }
 }
 
 function formatDate(dateStr: string | null): string {
@@ -411,13 +415,17 @@ export default function ExploreModels() {
         const bVal = b.family || '';
         comparison = aVal.localeCompare(bVal);
       } else if (sortKey === 'released_at') {
-        const aVal = a.released_at || '';
-        const bVal = b.released_at || '';
-        comparison = aVal.localeCompare(bVal);
+        // Nulls sort to end regardless of direction
+        if (!a.released_at && !b.released_at) comparison = 0;
+        else if (!a.released_at) return 1;
+        else if (!b.released_at) return -1;
+        else comparison = a.released_at.localeCompare(b.released_at);
       } else if (sortKey === 'knowledge_cutoff') {
-        const aVal = a.knowledge_cutoff || '';
-        const bVal = b.knowledge_cutoff || '';
-        comparison = aVal.localeCompare(bVal);
+        // Nulls sort to end regardless of direction
+        if (!a.knowledge_cutoff && !b.knowledge_cutoff) comparison = 0;
+        else if (!a.knowledge_cutoff) return 1;
+        else if (!b.knowledge_cutoff) return -1;
+        else comparison = a.knowledge_cutoff.localeCompare(b.knowledge_cutoff);
       } else if (sortKey === 'description') {
         const aVal = a.description || '';
         const bVal = b.description || '';
@@ -608,11 +616,19 @@ export default function ExploreModels() {
               </thead>
               <tbody>
                 {sortedModels.map((model) => (
-                  <>
+                  <React.Fragment key={model.id}>
                     <tr
-                      key={model.id}
                       onClick={() => toggleRow(model.id)}
-                      className={`border-b border-border hover:bg-paper cursor-pointer transition-colors ${
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggleRow(model.id);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      aria-expanded={expandedRows.has(model.id)}
+                      className={`border-b border-border hover:bg-paper cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-amber/50 focus:ring-inset ${
                         expandedRows.has(model.id) ? 'bg-paper' : ''
                       }`}
                     >
@@ -623,13 +639,13 @@ export default function ExploreModels() {
                       ))}
                     </tr>
                     {expandedRows.has(model.id) && (
-                      <tr key={`${model.id}-expanded`} className="bg-paper-dark">
+                      <tr className="bg-paper-dark">
                         <td colSpan={visibleColumnDefs.length} className="px-4 py-4">
                           <ExpandedRowContent model={model} visibleColumns={visibleColumns} />
                         </td>
                       </tr>
                     )}
-                  </>
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
