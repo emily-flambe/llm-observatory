@@ -23,6 +23,18 @@ export interface Model {
   source: 'auto' | 'manual';
   released_at: string | null;
   knowledge_cutoff: string | null;
+  input_price_per_m: number | null; // USD per million input tokens
+  output_price_per_m: number | null; // USD per million output tokens
+  description: string | null;
+  family: string | null;
+  context_window: number | null;
+  max_output_tokens: number | null;
+  supports_reasoning: number | null; // 0/1 boolean
+  supports_tool_calls: number | null; // 0/1 boolean
+  supports_attachments: number | null; // 0/1 boolean
+  open_weights: number | null; // 0/1 boolean
+  input_modalities: string | null; // JSON array as string
+  output_modalities: string | null; // JSON array as string
 }
 
 export interface Response {

@@ -12,6 +12,7 @@ import {
 import CollectionForm from './components/CollectionForm';
 import Landing from './pages/Landing';
 import PromptLab from './pages/PromptLab';
+import ExploreModels from './pages/ExploreModels';
 import { parseBigQueryTimestamp } from './utils/date';
 import { renderMarkdown } from './utils/markdown';
 import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection, CollectionsResponse } from './types';
@@ -1041,6 +1042,18 @@ function Layout({ children }: { children: React.ReactNode }) {
                 Prompt Lab
               </NavLink>
               <NavLink
+                to="/models"
+                className={({ isActive }) =>
+                  `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
+                    isActive
+                      ? 'bg-amber text-white'
+                      : 'bg-white text-ink-light hover:bg-paper-dark'
+                  }`
+                }
+              >
+                Models
+              </NavLink>
+              <NavLink
                 to="/collect"
                 className={({ isActive }) =>
                   `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
@@ -1100,6 +1113,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/prompt-lab" element={<PromptLab />} />
+          <Route path="/models" element={<ExploreModels />} />
           {/* Collect routes */}
           <Route path="/collect" element={<Navigate to="/collect/create" replace />} />
           <Route path="/collect/create" element={<CollectCreatePage />} />
