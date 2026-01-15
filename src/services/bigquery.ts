@@ -1053,6 +1053,138 @@ export async function getCollectionResponses(
 }
 
 /**
+ * Get responses for a specific observation from BigQuery
+ */
+export async function getObservationResponses(
+  env: BigQueryEnv,
+  observationId: string,
+  options: { limit?: number } = {}
+): Promise<BigQueryResult<PromptLabQuery[]>> {
+  const tokenResult = await getAccessToken(env);
+  if (!tokenResult.success) {
+    return tokenResult;
+  }
+
+  const limit = options.limit ?? 100;
+  const url = `https://bigquery.googleapis.com/bigquery/v2/projects/${env.BQ_PROJECT_ID}/queries`;
+
+  // Query all responses for this observation, grouped by prompt_id (each run)
+  const query = `
+    SELECT
+      prompt_id as group_id,
+      MAX(prompt) as prompt,
+      MAX(topic_name) as topic_name,
+      MAX(source) as source,
+      MAX(collected_at) as collected_at,
+      ARRAY_AGG(STRUCT(
+        id,
+        model,
+        company,
+        response,
+        latency_ms,
+        input_tokens,
+        output_tokens,
+        input_cost,
+        output_cost,
+        error,
+        success
+      ) ORDER BY company, model) as responses
+    FROM \`${env.BQ_PROJECT_ID}.${env.BQ_DATASET_ID}.${env.BQ_TABLE_ID}\`
+    WHERE observation_id = @observation_id
+    GROUP BY prompt_id
+    ORDER BY collected_at DESC
+    LIMIT @limit
+  `;
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${tokenResult.data}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query,
+        useLegacySql: false,
+        parameterMode: 'NAMED',
+        queryParameters: [
+          {
+            name: 'observation_id',
+            parameterType: { type: 'STRING' },
+            parameterValue: { value: observationId },
+          },
+          {
+            name: 'limit',
+            parameterType: { type: 'INT64' },
+            parameterValue: { value: String(limit) },
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        success: false,
+        error: `BigQuery API error: ${response.status} ${errorText}`,
+      };
+    }
+
+    const result = (await response.json()) as BigQueryQueryResponse;
+
+    if (result.errors) {
+      return {
+        success: false,
+        error: `BigQuery query error: ${JSON.stringify(result.errors)}`,
+      };
+    }
+
+    // Parse the grouped results
+    const prompts: PromptLabQuery[] = (result.rows ?? []).map((row) => {
+      const prompt_id = row.f[0].v as string;
+      const prompt = row.f[1].v as string;
+      const topic_name = row.f[2].v as string | null;
+      const source = row.f[3].v as string;
+      const collected_at = row.f[4].v as string;
+      const responsesArray = row.f[5].v as Array<{ v: { f: Array<{ v: unknown }> } }>;
+
+      const responses = (responsesArray ?? []).map((r) => {
+        const f = r.v.f;
+        const inputCostVal = f[7].v as string | null;
+        const outputCostVal = f[8].v as string | null;
+        return {
+          id: f[0].v as string,
+          model: f[1].v as string,
+          company: f[2].v as string,
+          response: f[3].v as string | null,
+          latency_ms: parseInt(f[4].v as string, 10) || 0,
+          input_tokens: parseInt(f[5].v as string, 10) || 0,
+          output_tokens: parseInt(f[6].v as string, 10) || 0,
+          input_cost: inputCostVal ? parseFloat(inputCostVal) : null,
+          output_cost: outputCostVal ? parseFloat(outputCostVal) : null,
+          error: f[9].v as string | null,
+          success: f[10].v === true || f[10].v === 'true',
+        };
+      });
+
+      return {
+        id: prompt_id,
+        collected_at,
+        prompt,
+        topic_name,
+        source,
+        responses,
+      };
+    });
+
+    return { success: true, data: prompts };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return { success: false, error: `BigQuery query failed: ${message}` };
+  }
+}
+
+/**
  * Clear the token cache (useful for testing or after errors)
  */
 export function clearTokenCache(): void {

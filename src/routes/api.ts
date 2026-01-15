@@ -624,6 +624,28 @@ api.put('/observations/:id/restore', async (c) => {
   return c.json({ success: true });
 });
 
+// Get responses for a specific observation (from BigQuery)
+api.get('/observations/:id/responses', async (c) => {
+  const { id } = c.req.param();
+  const limitParam = c.req.query('limit');
+  const limit = limitParam ? parseInt(limitParam, 10) : 100;
+
+  // Verify observation exists
+  const observation = await getObservation(c.env.DB, id);
+  if (!observation) {
+    return c.json({ error: 'Observation not found' }, 404);
+  }
+
+  // Get responses from BigQuery
+  const { getObservationResponses } = await import('../services/bigquery');
+  const result = await getObservationResponses(c.env, id, { limit });
+  if (!result.success) {
+    return c.json({ error: result.error }, 500);
+  }
+
+  return c.json({ prompts: result.data });
+});
+
 // ==================== Prompt Templates ====================
 
 // List all prompt templates
