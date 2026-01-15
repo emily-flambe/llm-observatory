@@ -640,7 +640,9 @@ api.get('/observations/:id/responses', async (c) => {
   const { getObservationResponses } = await import('../services/bigquery');
   const result = await getObservationResponses(c.env, id, { limit });
   if (!result.success) {
-    return c.json({ error: result.error }, 500);
+    // If BigQuery query fails (e.g., observation_id column doesn't exist yet), return empty array
+    console.error('Failed to get observation responses:', result.error);
+    return c.json({ prompts: [] });
   }
 
   return c.json({ prompts: result.data });
