@@ -44,7 +44,7 @@ UPDATE models SET input_price_per_m = 1.00, output_price_per_m = 4.00 WHERE mode
 UPDATE models SET input_price_per_m = 0.25, output_price_per_m = 1.00 WHERE model_name LIKE 'gpt-5-nano%';
 UPDATE models SET input_price_per_m = 10.00, output_price_per_m = 40.00 WHERE model_name LIKE 'gpt-5-pro%';
 UPDATE models SET input_price_per_m = 5.00, output_price_per_m = 15.00 WHERE model_name LIKE 'gpt-5.1%';
-UPDATE models SET input_price_per_m = 5.00, output_price_per_m = 15.00 WHERE model_name LIKE 'gpt-5.2%';
+UPDATE models SET input_price_per_m = 1.75, output_price_per_m = 14.00 WHERE model_name LIKE 'gpt-5.2%';
 
 -- OpenAI o-series reasoning models
 UPDATE models SET input_price_per_m = 15.00, output_price_per_m = 60.00 WHERE model_name = 'o1' OR model_name LIKE 'o1-2024%';
