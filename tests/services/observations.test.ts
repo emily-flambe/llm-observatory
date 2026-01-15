@@ -474,6 +474,32 @@ describe('Observation Storage Functions', () => {
 
       expect(result.new_version).toBe(true);
     });
+
+    it('does not create new version when only tags change', async () => {
+      const mockObservation = {
+        id: 'observation-123',
+        prompt_text: 'Test prompt',
+        display_name: null,
+        disabled: 0,
+        created_at: '2025-01-01T00:00:00Z',
+        last_run_at: null,
+        current_version: 1,
+        schedule_type: null,
+        cron_expression: null,
+        is_paused: 0,
+        model_count: 2,
+      };
+
+      mockDb._setFirst(mockObservation);
+      mockDb._setResults([{ model_id: 'model-1' }, { model_id: 'model-2' }]);
+
+      const result = await updateObservation(mockDb, 'observation-123', {
+        tag_ids: ['tag-1', 'tag-2'],
+      });
+
+      // Tags should NOT create a new version
+      expect(result.new_version).toBe(false);
+    });
   });
 
   describe('deleteObservation', () => {

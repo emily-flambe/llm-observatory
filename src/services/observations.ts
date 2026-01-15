@@ -160,7 +160,7 @@ export async function getObservations(
   db: D1Database,
   options: { includeDisabled?: boolean } = {}
 ): Promise<ObservationWithDetails[]> {
-  const { includeDisabled = true } = options;
+  const { includeDisabled = false } = options;
   const whereClause = includeDisabled ? '' : 'WHERE o.disabled = 0';
   const result = await db
     .prepare(
