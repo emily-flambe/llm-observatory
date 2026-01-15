@@ -16,14 +16,14 @@ export interface BigQueryRow {
   id: string;
   prompt_id: string; // groups all responses from a single prompt submission
   collected_at: string; // ISO timestamp
-  source: 'collect' | 'prompt-lab' | 'collection'; // where the response came from
+  source: 'collect' | 'prompt-lab' | 'collection' | 'observation'; // where the response came from
   company: string; // provider like "openai", "anthropic"
   product: string; // family like "gpt", "claude"
   model: string; // specific model like "gpt-4o"
-  topic_id: string | null; // null for prompt-lab
-  topic_name: string | null; // null for prompt-lab
-  prompt_template_id: string | null; // null for prompt-lab
-  prompt_template_name: string | null; // null for prompt-lab
+  topic_id: string | null; // null for prompt-lab and observations
+  topic_name: string | null; // null for prompt-lab and observations
+  prompt_template_id: string | null; // null for prompt-lab and observations
+  prompt_template_name: string | null; // null for prompt-lab and observations
   prompt: string; // rendered prompt or freeform prompt
   response: string | null;
   reasoning_content: string | null; // chain-of-thought from reasoning models
@@ -36,6 +36,8 @@ export interface BigQueryRow {
   success: boolean;
   collection_id?: string | null; // reference to D1 collection
   collection_version?: number | null; // version at time of collection
+  observation_id?: string | null; // reference to D1 observation
+  observation_version?: number | null; // version at time of observation run
 }
 
 export interface QueryResult {
@@ -328,6 +330,8 @@ export async function insertRow(
               success: row.success,
               collection_id: row.collection_id ?? null,
               collection_version: row.collection_version ?? null,
+              observation_id: row.observation_id ?? null,
+              observation_version: row.observation_version ?? null,
             },
           },
         ],

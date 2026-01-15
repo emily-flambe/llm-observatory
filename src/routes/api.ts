@@ -36,6 +36,19 @@ import {
 } from '../services/bigquery';
 import { requireAccess } from '../middleware/access';
 import { checkRateLimit, incrementRateLimit, getRateLimitStatus } from '../services/ratelimit';
+import { createTag, getTags, deleteTag } from '../services/tags';
+import {
+  createObservation,
+  getObservation,
+  getObservations,
+  updateObservation,
+  deleteObservation,
+  restoreObservation,
+  getObservationVersionModels,
+  getObservationTags,
+  getObservationVersions,
+  updateObservationLastRunAt,
+} from '../services/observations';
 
 type Variables = {
   userEmail?: string;
@@ -257,6 +270,44 @@ api.post('/topics', async (c) => {
   }
 });
 
+// ==================== Tags ====================
+
+// List all tags
+api.get('/tags', async (c) => {
+  const tags = await getTags(c.env.DB);
+  return c.json({ tags });
+});
+
+// Create a tag
+api.post('/tags', async (c) => {
+  const body = await c.req.json<{ name: string; color?: string }>();
+
+  if (!body.name) {
+    return c.json({ error: 'name is required' }, 400);
+  }
+
+  try {
+    const tag = await createTag(c.env.DB, body);
+    return c.json({ tag }, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to create tag';
+    if (message.includes('UNIQUE constraint')) {
+      return c.json({ error: 'Tag with this name already exists' }, 409);
+    }
+    return c.json({ error: message }, 500);
+  }
+});
+
+// Delete a tag
+api.delete('/tags/:id', async (c) => {
+  const { id } = c.req.param();
+  const deleted = await deleteTag(c.env.DB, id);
+  if (!deleted) {
+    return c.json({ error: 'Tag not found' }, 404);
+  }
+  return c.json({ success: true });
+});
+
 // ==================== Prompt Lab History ====================
 
 // Get recent prompts from Prompt Lab
@@ -288,6 +339,289 @@ api.get('/prompts', async (c) => {
   }
 
   return c.json({ prompts: result.data });
+});
+
+// ==================== Observations ====================
+
+// Helper to run an observation (similar to runCollectionInternal)
+async function runObservationInternal(
+  env: Env,
+  db: D1Database,
+  observationId: string
+): Promise<{
+  success: boolean;
+  error?: string;
+  results?: Array<{ modelId: string; success: boolean; latencyMs?: number; error?: string }>;
+}> {
+  const observation = await getObservation(db, observationId);
+  if (!observation) {
+    return { success: false, error: 'Observation not found' };
+  }
+
+  const modelIds = await getObservationVersionModels(db, observationId);
+  if (modelIds.length === 0) {
+    return { success: false, error: 'Observation has no models configured' };
+  }
+
+  // Check rate limit
+  const rateLimit = await checkRateLimit(db, 'collect');
+  if (rateLimit.remaining < modelIds.length) {
+    return {
+      success: false,
+      error: `Would exceed daily rate limit (requested: ${modelIds.length}, remaining: ${rateLimit.remaining})`,
+    };
+  }
+
+  // Generate a prompt ID for this run
+  const promptId = crypto.randomUUID();
+  const collectedAt = new Date().toISOString();
+
+  // Run observation against all models in parallel
+  const modelPromises = modelIds.map(async (modelId) => {
+    const model = await getModel(db, modelId);
+    if (!model) {
+      return { modelId, success: false, error: 'Model not found' } as const;
+    }
+
+    let responseContent: string | null = null;
+    let reasoningContent: string | null = null;
+    let errorMsg: string | null = null;
+    let latencyMs = 0;
+    let inputTokens = 0;
+    let outputTokens = 0;
+
+    try {
+      const provider = createLLMProvider(model.id, model.provider, model.model_name, env);
+      const start = Date.now();
+      const response = await provider.complete({ prompt: observation.prompt_text });
+      latencyMs = Date.now() - start;
+      responseContent = response.content;
+      reasoningContent = response.reasoningContent ?? null;
+      inputTokens = response.inputTokens ?? 0;
+      outputTokens = response.outputTokens ?? 0;
+    } catch (err) {
+      errorMsg = err instanceof Error ? err.message : 'Unknown error';
+    }
+
+    // Calculate costs
+    let inputCost: number | null = null;
+    let outputCost: number | null = null;
+    if (model.input_price_per_m !== null && inputTokens > 0) {
+      inputCost = (inputTokens / 1_000_000) * model.input_price_per_m;
+    }
+    if (model.output_price_per_m !== null && outputTokens > 0) {
+      outputCost = (outputTokens / 1_000_000) * model.output_price_per_m;
+    }
+
+    // Save to BigQuery with observation reference
+    const bqRow: BigQueryRow = {
+      id: crypto.randomUUID(),
+      prompt_id: promptId,
+      collected_at: collectedAt,
+      source: 'observation',
+      company: extractCompany(model.provider, model.model_name),
+      product: extractProductFamily(model.model_name),
+      model: model.model_name,
+      topic_id: null,
+      topic_name: null,
+      prompt_template_id: null,
+      prompt_template_name: null,
+      prompt: observation.prompt_text,
+      response: responseContent,
+      reasoning_content: reasoningContent,
+      latency_ms: latencyMs,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      input_cost: inputCost,
+      output_cost: outputCost,
+      error: errorMsg,
+      success: !errorMsg,
+      observation_id: observation.id,
+      observation_version: observation.current_version,
+    };
+    insertRow(env, bqRow).catch((err) => {
+      console.error('Failed to save observation response to BigQuery:', err);
+    });
+
+    return errorMsg
+      ? ({ modelId, success: false, error: errorMsg } as const)
+      : ({ modelId, success: true, latencyMs } as const);
+  });
+
+  const results = await Promise.all(modelPromises);
+
+  // Update last_run_at
+  await updateObservationLastRunAt(db, observationId);
+
+  // Increment rate limit
+  await incrementRateLimit(db, 'collect', results.length);
+
+  return { success: true, results };
+}
+
+// List all observations
+api.get('/observations', async (c) => {
+  const includeDisabledParam = c.req.query('includeDisabled');
+  const includeDisabled = includeDisabledParam === 'true';
+  const tagsParam = c.req.query('tags'); // comma-separated tag IDs
+  const search = c.req.query('search');
+
+  let observations = await getObservations(c.env.DB, { includeDisabled });
+
+  // Fetch tags for each observation
+  const observationsWithTags = await Promise.all(
+    observations.map(async (obs) => {
+      const tags = await getObservationTags(c.env.DB, obs.id);
+      return { ...obs, tags };
+    })
+  );
+
+  // Filter by tags if specified
+  if (tagsParam) {
+    const filterTagIds = tagsParam.split(',').filter(Boolean);
+    observations = observationsWithTags.filter((obs) =>
+      obs.tags?.some((tag) => filterTagIds.includes(tag.id))
+    );
+  }
+
+  // Filter by search if specified
+  if (search) {
+    const searchLower = search.toLowerCase();
+    observations = observationsWithTags.filter(
+      (obs) =>
+        obs.prompt_text.toLowerCase().includes(searchLower) ||
+        (obs.display_name && obs.display_name.toLowerCase().includes(searchLower))
+    );
+  }
+
+  return c.json({ observations: tagsParam || search ? observations : observationsWithTags });
+});
+
+// Get single observation with details
+api.get('/observations/:id', async (c) => {
+  const { id } = c.req.param();
+  const observation = await getObservation(c.env.DB, id);
+  if (!observation) {
+    return c.json({ error: 'Observation not found' }, 404);
+  }
+
+  // Get models, tags, and versions for this observation
+  const modelIds = await getObservationVersionModels(c.env.DB, id);
+  const tags = await getObservationTags(c.env.DB, id);
+  const versions = await getObservationVersions(c.env.DB, id);
+
+  // Return models as objects with id property (for frontend compatibility)
+  const models = modelIds.map((id) => ({ id }));
+
+  return c.json({
+    observation: {
+      ...observation,
+      models,
+      tags,
+      versions,
+    },
+  });
+});
+
+// Create new observation and run immediately
+api.post('/observations', async (c) => {
+  const body = await c.req.json<{
+    prompt_text: string;
+    display_name?: string;
+    model_ids: string[];
+    tag_ids?: string[];
+    word_limit?: number;
+    schedule_type?: 'daily' | 'weekly' | 'monthly' | 'custom' | null;
+    cron_expression?: string | null;
+  }>();
+
+  if (!body.prompt_text || !body.model_ids?.length) {
+    return c.json({ error: 'prompt_text and model_ids are required' }, 400);
+  }
+
+  // Apply word limit if specified
+  let promptText = body.prompt_text;
+  if (body.word_limit && body.word_limit > 0) {
+    promptText = `${promptText}\n\nLimit your response to ${body.word_limit} words.`;
+  }
+
+  try {
+    const { observation } = await createObservation(c.env.DB, {
+      prompt_text: promptText,
+      display_name: body.display_name,
+      model_ids: body.model_ids,
+      tag_ids: body.tag_ids,
+      schedule_type: body.schedule_type,
+      cron_expression: body.cron_expression,
+    });
+
+    // Run observation immediately and wait for results
+    const runResult = await runObservationInternal(c.env, c.env.DB, observation.id);
+
+    const observationWithDetails = await getObservation(c.env.DB, observation.id);
+    const tags = await getObservationTags(c.env.DB, observation.id);
+    const modelIds = await getObservationVersionModels(c.env.DB, observation.id);
+
+    return c.json(
+      {
+        observation: {
+          ...observationWithDetails,
+          tags,
+          models: modelIds.map((id) => ({ id })),
+        },
+        results: runResult.results,
+        created: true,
+      },
+      201
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to create observation';
+    console.error('Observation creation failed:', err);
+    return c.json({ error: message }, 500);
+  }
+});
+
+// Update observation (creates new version if models/schedule change)
+api.put('/observations/:id', async (c) => {
+  const { id } = c.req.param();
+  const body = await c.req.json<{
+    display_name?: string;
+    model_ids?: string[];
+    tag_ids?: string[];
+    schedule_type?: 'daily' | 'weekly' | 'monthly' | 'custom' | null;
+    cron_expression?: string | null;
+    is_paused?: boolean;
+  }>();
+
+  const { observation, new_version } = await updateObservation(c.env.DB, id, body);
+  if (!observation) {
+    return c.json({ error: 'Observation not found' }, 404);
+  }
+
+  // Get tags for response
+  const tags = await getObservationTags(c.env.DB, id);
+
+  return c.json({ observation: { ...observation, tags }, new_version });
+});
+
+// Delete observation (soft-delete: sets disabled flag)
+api.delete('/observations/:id', async (c) => {
+  const { id } = c.req.param();
+  const deleted = await deleteObservation(c.env.DB, id);
+  if (!deleted) {
+    return c.json({ error: 'Observation not found' }, 404);
+  }
+  return c.json({ success: true });
+});
+
+// Restore a disabled observation
+api.put('/observations/:id/restore', async (c) => {
+  const { id } = c.req.param();
+  const restored = await restoreObservation(c.env.DB, id);
+  if (!restored) {
+    return c.json({ error: 'Observation not found' }, 404);
+  }
+  return c.json({ success: true });
 });
 
 // ==================== Prompt Templates ====================
@@ -589,6 +923,24 @@ admin.post('/collections/:id/run', async (c) => {
 
   return c.json({
     collection_id: id,
+    results: result.results,
+    successful: result.results?.filter((r) => r.success).length ?? 0,
+    failed: result.results?.filter((r) => !r.success).length ?? 0,
+  });
+});
+
+// Run an observation manually (protected + rate limited)
+admin.post('/observations/:id/run', async (c) => {
+  const { id } = c.req.param();
+
+  const result = await runObservationInternal(c.env, c.env.DB, id);
+  if (!result.success) {
+    const status = result.error?.includes('not found') ? 404 : result.error?.includes('rate limit') ? 429 : 400;
+    return c.json({ error: result.error }, status);
+  }
+
+  return c.json({
+    observation_id: id,
     results: result.results,
     successful: result.results?.filter((r) => r.success).length ?? 0,
     failed: result.results?.filter((r) => !r.success).length ?? 0,
