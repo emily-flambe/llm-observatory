@@ -56,6 +56,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [results, setResults] = useState<Map<string, ModelResult>>(new Map());
   const [createdObservationId, setCreatedObservationId] = useState<string | null>(null);
+  const [editSuccess, setEditSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // New tag creation
@@ -235,14 +236,18 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
         body: JSON.stringify({ name: newTagName.trim(), color: newTagColor }),
       });
 
+      const data = (await res.json()) as { tag?: Tag; error?: string };
+
       if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
         throw new Error(data.error || 'Failed to create tag');
       }
 
-      const { tag } = (await res.json()) as { tag: Tag };
-      setTags((prev) => [...prev, tag]);
-      setSelectedTags((prev) => new Set([...prev, tag.id]));
+      if (!data.tag) {
+        throw new Error('Invalid response from server');
+      }
+
+      setTags((prev) => [...prev, data.tag!]);
+      setSelectedTags((prev) => new Set([...prev, data.tag!.id]));
       setNewTagName('');
       setShowNewTagInput(false);
     } catch (err) {
@@ -257,43 +262,20 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
 
     setIsSubmitting(true);
     setError(null);
-    setResults(new Map());
-    setCreatedObservationId(null);
+    setEditSuccess(false);
 
-    // Initialize all selected models with pending status
-    const initialResults = new Map<string, ModelResult>();
-    const selectedModelsList = models.filter((m) => selectedModels.has(m.id));
-
-    for (const model of selectedModelsList) {
-      initialResults.set(model.id, {
-        modelId: model.id,
-        displayName: model.display_name,
-        status: 'pending',
-      });
+    // Convert schedule type to cron expression
+    let finalCron: string | null = null;
+    if (scheduleType !== 'none') {
+      if (scheduleType === 'daily') finalCron = '0 6 * * *';
+      else if (scheduleType === 'weekly') finalCron = '0 6 * * 1';
+      else if (scheduleType === 'monthly') finalCron = '0 6 1 * *';
+      else if (scheduleType === 'custom') finalCron = cronExpression;
     }
-    setResults(initialResults);
-
-    // Update all to loading
-    setResults((prev) => {
-      const next = new Map(prev);
-      for (const [id, result] of next) {
-        next.set(id, { ...result, status: 'loading', startTime: Date.now() });
-      }
-      return next;
-    });
 
     try {
-      // Convert schedule type to cron expression
-      let finalCron: string | null = null;
-      if (scheduleType !== 'none') {
-        if (scheduleType === 'daily') finalCron = '0 6 * * *';
-        else if (scheduleType === 'weekly') finalCron = '0 6 * * 1';
-        else if (scheduleType === 'monthly') finalCron = '0 6 1 * *';
-        else if (scheduleType === 'custom') finalCron = cronExpression;
-      }
-
       if (isEditing && editId) {
-        // Update existing observation
+        // Update existing observation - no results display needed
         const res = await fetch(`/api/observations/${editId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -311,17 +293,34 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
           throw new Error(data.error || 'Failed to update observation');
         }
 
+        setEditSuccess(true);
         setCreatedObservationId(editId);
+      } else {
+        // Create mode - show results
+        setResults(new Map());
+        setCreatedObservationId(null);
 
-        // Mark all as success (edit doesn't re-run)
+        // Initialize all selected models with pending status
+        const initialResults = new Map<string, ModelResult>();
+        const selectedModelsList = models.filter((m) => selectedModels.has(m.id));
+
+        for (const model of selectedModelsList) {
+          initialResults.set(model.id, {
+            modelId: model.id,
+            displayName: model.display_name,
+            status: 'pending',
+          });
+        }
+        setResults(initialResults);
+
+        // Update all to loading
         setResults((prev) => {
           const next = new Map(prev);
           for (const [id, result] of next) {
-            next.set(id, { ...result, status: 'success' });
+            next.set(id, { ...result, status: 'loading', startTime: Date.now() });
           }
           return next;
         });
-      } else {
         // Create new observation and run
         const res = await fetch('/api/observations', {
           method: 'POST',
@@ -372,14 +371,16 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
       const errorMsg = err instanceof Error ? err.message : 'Request failed';
       setError(errorMsg);
 
-      // Mark all as error
-      setResults((prev) => {
-        const next = new Map(prev);
-        for (const [id, result] of next) {
-          next.set(id, { ...result, status: 'error', error: errorMsg });
-        }
-        return next;
-      });
+      // Mark all as error (only relevant in create mode where results exist)
+      if (!isEditing) {
+        setResults((prev) => {
+          const next = new Map(prev);
+          for (const [id, result] of next) {
+            next.set(id, { ...result, status: 'error', error: errorMsg });
+          }
+          return next;
+        });
+      }
     }
 
     setIsSubmitting(false);
@@ -405,6 +406,18 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-error text-sm">
               {error}
+            </div>
+          )}
+
+          {editSuccess && createdObservationId && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-success text-sm flex items-center justify-between">
+              <span>Observation updated successfully.</span>
+              <Link
+                to={`/collect/${createdObservationId}`}
+                className="text-amber hover:text-amber-light font-medium"
+              >
+                View Observation &rarr;
+              </Link>
             </div>
           )}
 
@@ -643,8 +656,8 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
         </div>
       </div>
 
-      {/* Results section */}
-      {results.size > 0 && (
+      {/* Results section - only shown in create mode */}
+      {!isEditing && results.size > 0 && (
         <div className="bg-white border border-border rounded-xl shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-border flex items-center justify-between">
             <h3 className="text-lg font-medium text-ink">Results</h3>
