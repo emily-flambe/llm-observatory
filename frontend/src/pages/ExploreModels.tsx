@@ -94,7 +94,7 @@ function formatBoolean(val: number | null): string {
   return val === 1 ? 'Yes' : 'No';
 }
 
-type ReleaseDatePreset = 'any' | 'last6months' | 'lastyear' | '2024' | '2023' | 'older' | 'custom';
+type ReleaseDatePreset = 'any' | 'last6months' | 'lastyear' | 'thisyear' | 'prevyear' | 'older' | 'custom';
 
 interface ReleaseDateFilter {
   preset: ReleaseDatePreset;
@@ -102,25 +102,38 @@ interface ReleaseDateFilter {
   customTo: string;
 }
 
-function getDateRangeForPreset(preset: ReleaseDatePreset): { from: Date | null; to: Date | null } {
-  const now = new Date();
+// Get current year for dynamic presets
+const CURRENT_YEAR = new Date().getFullYear();
+
+// Parse date string to comparable date string (YYYY-MM-DD) without timezone issues
+function toComparableDate(dateStr: string): string {
+  // If already in YYYY-MM-DD format, return as-is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return dateStr;
+  }
+  // Otherwise parse and format
+  const date = new Date(dateStr);
+  return date.toISOString().split('T')[0];
+}
+
+function getDateRangeForPreset(preset: ReleaseDatePreset): { from: string | null; to: string | null } {
   switch (preset) {
     case 'last6months': {
-      const from = new Date(now);
+      const from = new Date();
       from.setMonth(from.getMonth() - 6);
-      return { from, to: null };
+      return { from: from.toISOString().split('T')[0], to: null };
     }
     case 'lastyear': {
-      const from = new Date(now);
+      const from = new Date();
       from.setFullYear(from.getFullYear() - 1);
-      return { from, to: null };
+      return { from: from.toISOString().split('T')[0], to: null };
     }
-    case '2024':
-      return { from: new Date('2024-01-01'), to: new Date('2024-12-31') };
-    case '2023':
-      return { from: new Date('2023-01-01'), to: new Date('2023-12-31') };
+    case 'thisyear':
+      return { from: `${CURRENT_YEAR}-01-01`, to: `${CURRENT_YEAR}-12-31` };
+    case 'prevyear':
+      return { from: `${CURRENT_YEAR - 1}-01-01`, to: `${CURRENT_YEAR - 1}-12-31` };
     case 'older':
-      return { from: null, to: new Date('2022-12-31') };
+      return { from: null, to: `${CURRENT_YEAR - 2}-12-31` };
     default:
       return { from: null, to: null };
   }
@@ -130,9 +143,9 @@ const RELEASE_DATE_OPTIONS: { value: ReleaseDatePreset; label: string }[] = [
   { value: 'any', label: 'Any' },
   { value: 'last6months', label: 'Last 6 months' },
   { value: 'lastyear', label: 'Last year' },
-  { value: '2024', label: '2024' },
-  { value: '2023', label: '2023' },
-  { value: 'older', label: 'Older' },
+  { value: 'thisyear', label: String(CURRENT_YEAR) },
+  { value: 'prevyear', label: String(CURRENT_YEAR - 1) },
+  { value: 'older', label: `Before ${CURRENT_YEAR - 1}` },
   { value: 'custom', label: 'Custom...' },
 ];
 
@@ -337,23 +350,30 @@ function ReleaseDateDropdown({
             {value.preset === 'custom' && (
               <div className="px-3 py-2 border-t border-border space-y-2">
                 <div>
-                  <label className="text-xs text-ink-muted">From</label>
+                  <label htmlFor="release-date-from" className="text-xs text-ink-muted">From</label>
                   <input
+                    id="release-date-from"
                     type="date"
                     value={value.customFrom}
                     onChange={(e) => onChange({ ...value, customFrom: e.target.value })}
+                    aria-label="Release date from"
                     className="w-full px-2 py-1 border border-border rounded text-sm"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-ink-muted">To</label>
+                  <label htmlFor="release-date-to" className="text-xs text-ink-muted">To</label>
                   <input
+                    id="release-date-to"
                     type="date"
                     value={value.customTo}
                     onChange={(e) => onChange({ ...value, customTo: e.target.value })}
+                    aria-label="Release date to"
                     className="w-full px-2 py-1 border border-border rounded text-sm"
                   />
                 </div>
+                {value.customFrom && value.customTo && value.customFrom > value.customTo && (
+                  <div className="text-xs text-amber">Dates will be swapped when filtering</div>
+                )}
               </div>
             )}
           </div>
@@ -604,37 +624,47 @@ export default function ExploreModels() {
       result = result.filter((m) => m.open_weights === 1);
     }
 
-    // Filter by release date
+    // Filter by release date (using string comparison for consistency)
     if (releaseDate.preset !== 'any') {
       if (releaseDate.preset === 'custom') {
-        // Custom date range
-        if (releaseDate.customFrom) {
-          const fromDate = new Date(releaseDate.customFrom);
+        // Custom date range - validate and normalize
+        let fromDate = releaseDate.customFrom;
+        let toDate = releaseDate.customTo;
+
+        // Swap if from > to (auto-correct invalid range)
+        if (fromDate && toDate && fromDate > toDate) {
+          [fromDate, toDate] = [toDate, fromDate];
+        }
+
+        if (fromDate) {
           result = result.filter((m) => {
             if (!m.released_at) return false;
-            return new Date(m.released_at) >= fromDate;
+            const modelDate = toComparableDate(m.released_at);
+            return modelDate >= fromDate;
           });
         }
-        if (releaseDate.customTo) {
-          const toDate = new Date(releaseDate.customTo);
+        if (toDate) {
           result = result.filter((m) => {
             if (!m.released_at) return false;
-            return new Date(m.released_at) <= toDate;
+            const modelDate = toComparableDate(m.released_at);
+            return modelDate <= toDate;
           });
         }
       } else {
-        // Preset date range
+        // Preset date range - uses string comparison
         const { from, to } = getDateRangeForPreset(releaseDate.preset);
         if (from) {
           result = result.filter((m) => {
             if (!m.released_at) return false;
-            return new Date(m.released_at) >= from;
+            const modelDate = toComparableDate(m.released_at);
+            return modelDate >= from;
           });
         }
         if (to) {
           result = result.filter((m) => {
             if (!m.released_at) return false;
-            return new Date(m.released_at) <= to;
+            const modelDate = toComparableDate(m.released_at);
+            return modelDate <= to;
           });
         }
       }
