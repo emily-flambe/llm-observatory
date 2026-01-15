@@ -33,6 +33,8 @@ gh pr create --fill  # Creates draft PR for review
 
 **CRITICAL: Copy `.dev.vars` AFTER `make setup`.** The setup script copies `.dev.vars.example` which will overwrite your copy.
 
+**After completing any task:** Commit changes and create/update PR. Don't wait for the user to ask.
+
 ## Database
 
 - **D1**: Config (topics, models, prompt_templates)
