@@ -89,6 +89,18 @@ export async function syncBasellmMetadata(env: Env): Promise<MetadataSyncResult>
         const result = await updateModelMetadata(env.DB, modelName, {
           released_at: releasedAt,
           knowledge_cutoff: knowledgeCutoff,
+          description: model.description ?? null,
+          family: model.family ?? null,
+          context_window: model.limit?.context ?? null,
+          max_output_tokens: model.limit?.output ?? null,
+          supports_reasoning: model.reasoning !== undefined ? (model.reasoning ? 1 : 0) : null,
+          supports_tool_calls: model.tool_call !== undefined ? (model.tool_call ? 1 : 0) : null,
+          supports_attachments: model.attachment !== undefined ? (model.attachment ? 1 : 0) : null,
+          open_weights: model.open_weights !== undefined ? (model.open_weights ? 1 : 0) : null,
+          input_modalities: model.modalities?.input ? JSON.stringify(model.modalities.input) : null,
+          output_modalities: model.modalities?.output
+            ? JSON.stringify(model.modalities.output)
+            : null,
         });
 
         if (result.updated) {
