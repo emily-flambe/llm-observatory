@@ -58,7 +58,7 @@ function CollectNewPage() {
 
 function ManageCollectionCard({ collection }: { collection: Collection }) {
   const lastRunDate = collection.last_run_at ? parseBigQueryTimestamp(collection.last_run_at) : null;
-  const displayName = collection.display_name || `${collection.topic_name} - ${collection.template_name}`;
+  const displayName = collection.display_name || (collection.prompt_text?.slice(0, 50) + (collection.prompt_text && collection.prompt_text.length > 50 ? '...' : ''));
   const isDisabled = collection.disabled === 1;
 
   let status: { label: string; color: string; icon: string };
@@ -607,14 +607,14 @@ function CollectionDetailPage() {
     if (!id) return;
 
     Promise.all([
-      fetch(`/api/collections/${id}`).then((res) => res.json()) as Promise<{ error?: string; collection: Collection }>,
-      fetch(`/api/collections/${id}/responses`).then((res) => res.json()) as Promise<PromptsResponse & { error?: string }>,
+      fetch(`/api/observations/${id}`).then((res) => res.json()) as Promise<{ error?: string; observation: Collection }>,
+      fetch(`/api/observations/${id}/responses`).then((res) => res.json()) as Promise<PromptsResponse & { error?: string }>,
     ])
-      .then(([collectionData, responsesData]) => {
-        if (collectionData.error) {
-          throw new Error(collectionData.error);
+      .then(([observationData, responsesData]) => {
+        if (observationData.error) {
+          throw new Error(observationData.error);
         }
-        setCollection(collectionData.collection);
+        setCollection(observationData.observation);
         setPrompts(responsesData.prompts || []);
         setLoading(false);
       })
@@ -669,7 +669,7 @@ function CollectionDetailPage() {
     setIsRunning(true);
 
     try {
-      const res = await fetch(`/api/admin/collections/${id}/run`, {
+      const res = await fetch(`/api/admin/observations/${id}/run`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -678,9 +678,9 @@ function CollectionDetailPage() {
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to run collection');
+        throw new Error(data.error || 'Failed to run observation');
       }
-      setActionSuccess('Collection run completed successfully!');
+      setActionSuccess('Observation run completed successfully!');
       loadData();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to run collection');
@@ -698,7 +698,7 @@ function CollectionDetailPage() {
     setActionSuccess(null);
 
     try {
-      const res = await fetch(`/api/collections/${id}`, {
+      const res = await fetch(`/api/observations/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -708,7 +708,7 @@ function CollectionDetailPage() {
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to update collection');
+        throw new Error(data.error || 'Failed to update observation');
       }
       loadData();
     } catch (err) {
@@ -725,13 +725,13 @@ function CollectionDetailPage() {
     setActionSuccess(null);
 
     try {
-      const res = await fetch(`/api/collections/${id}`, {
+      const res = await fetch(`/api/observations/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${apiKey}` },
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to disable collection');
+        throw new Error(data.error || 'Failed to disable observation');
       }
       loadData();
       setShowDisableConfirm(false);
@@ -749,13 +749,13 @@ function CollectionDetailPage() {
     setActionSuccess(null);
 
     try {
-      const res = await fetch(`/api/collections/${id}/restore`, {
+      const res = await fetch(`/api/observations/${id}/restore`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${apiKey}` },
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to restore collection');
+        throw new Error(data.error || 'Failed to restore observation');
       }
       loadData();
     } catch (err) {
@@ -800,7 +800,7 @@ function CollectionDetailPage() {
     );
   }
 
-  const displayName = collection.display_name || `${collection.topic_name} - ${collection.template_name}`;
+  const displayName = collection.display_name || (collection.prompt_text?.slice(0, 50) + (collection.prompt_text && collection.prompt_text.length > 50 ? '...' : ''));
   const isDisabled = collection.disabled === 1;
 
   let status: { label: string; color: string; icon: string };
