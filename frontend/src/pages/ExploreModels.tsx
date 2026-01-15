@@ -543,23 +543,11 @@ export default function ExploreModels() {
     const families = searchParams.get('families');
     return families ? new Set(families.split(',')) : new Set<string>();
   };
-  const getInitialCapabilities = (): {
-    reasoning: CapabilityValue;
-    tools: CapabilityValue;
-    attachments: CapabilityValue;
-    openWeights: CapabilityValue;
-  } => {
-    const parseCapability = (param: string | null): CapabilityValue => {
-      if (param === 'yes') return 'yes';
-      if (param === 'no') return 'no';
-      return 'both';
-    };
-    return {
-      reasoning: parseCapability(searchParams.get('reasoning')),
-      tools: parseCapability(searchParams.get('tools')),
-      attachments: parseCapability(searchParams.get('attachments')),
-      openWeights: parseCapability(searchParams.get('openWeights')),
-    };
+  const getInitialReasoning = (): CapabilityValue => {
+    const param = searchParams.get('reasoning');
+    if (param === 'yes') return 'yes';
+    if (param === 'no') return 'no';
+    return 'both';
   };
   const getInitialReleaseDate = (): ReleaseDateFilter => {
     const preset = (searchParams.get('releasePreset') as ReleaseDatePreset) || 'any';
@@ -574,7 +562,7 @@ export default function ExploreModels() {
   const [searchQuery, setSearchQuery] = useState(getInitialSearchQuery);
   const [selectedCompanies, setSelectedCompanies] = useState<Set<string>>(getInitialCompanies);
   const [selectedFamilies, setSelectedFamilies] = useState<Set<string>>(getInitialFamilies);
-  const [capabilities, setCapabilities] = useState(getInitialCapabilities);
+  const [reasoning, setReasoning] = useState<CapabilityValue>(getInitialReasoning);
   const [releaseDate, setReleaseDate] = useState<ReleaseDateFilter>(getInitialReleaseDate);
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(loadSavedColumns);
 
@@ -592,10 +580,7 @@ export default function ExploreModels() {
     if (searchQuery.trim()) params.set('q', searchQuery.trim());
     if (selectedCompanies.size > 0) params.set('companies', Array.from(selectedCompanies).join(','));
     if (selectedFamilies.size > 0) params.set('families', Array.from(selectedFamilies).join(','));
-    if (capabilities.reasoning !== 'both') params.set('reasoning', capabilities.reasoning);
-    if (capabilities.tools !== 'both') params.set('tools', capabilities.tools);
-    if (capabilities.attachments !== 'both') params.set('attachments', capabilities.attachments);
-    if (capabilities.openWeights !== 'both') params.set('openWeights', capabilities.openWeights);
+    if (reasoning !== 'both') params.set('reasoning', reasoning);
     if (releaseDate.preset !== 'any') {
       params.set('releasePreset', releaseDate.preset);
       if (releaseDate.preset === 'custom') {
@@ -605,7 +590,7 @@ export default function ExploreModels() {
     }
 
     setSearchParams(params, { replace: true });
-  }, [searchQuery, selectedCompanies, selectedFamilies, capabilities, releaseDate, setSearchParams]);
+  }, [searchQuery, selectedCompanies, selectedFamilies, reasoning, releaseDate, setSearchParams]);
 
   useEffect(() => {
     updateUrlParams();
@@ -653,26 +638,11 @@ export default function ExploreModels() {
       result = result.filter((m) => m.family && selectedFamilies.has(m.family));
     }
 
-    // Filter by capabilities (tri-state: both/yes/no)
-    if (capabilities.reasoning === 'yes') {
+    // Filter by reasoning capability (tri-state: both/yes/no)
+    if (reasoning === 'yes') {
       result = result.filter((m) => m.supports_reasoning === 1);
-    } else if (capabilities.reasoning === 'no') {
+    } else if (reasoning === 'no') {
       result = result.filter((m) => m.supports_reasoning !== 1);
-    }
-    if (capabilities.tools === 'yes') {
-      result = result.filter((m) => m.supports_tool_calls === 1);
-    } else if (capabilities.tools === 'no') {
-      result = result.filter((m) => m.supports_tool_calls !== 1);
-    }
-    if (capabilities.attachments === 'yes') {
-      result = result.filter((m) => m.supports_attachments === 1);
-    } else if (capabilities.attachments === 'no') {
-      result = result.filter((m) => m.supports_attachments !== 1);
-    }
-    if (capabilities.openWeights === 'yes') {
-      result = result.filter((m) => m.open_weights === 1);
-    } else if (capabilities.openWeights === 'no') {
-      result = result.filter((m) => m.open_weights !== 1);
     }
 
     // Filter by release date (using string comparison for consistency)
@@ -736,7 +706,7 @@ export default function ExploreModels() {
     }
 
     return result;
-  }, [models, selectedCompanies, selectedFamilies, capabilities, releaseDate, searchQuery]);
+  }, [models, selectedCompanies, selectedFamilies, reasoning, releaseDate, searchQuery]);
 
   // Sort models
   const sortedModels = useMemo(() => {
@@ -836,22 +806,14 @@ export default function ExploreModels() {
   const hasActiveFilters =
     selectedCompanies.size > 0 ||
     selectedFamilies.size > 0 ||
-    capabilities.reasoning !== 'both' ||
-    capabilities.tools !== 'both' ||
-    capabilities.attachments !== 'both' ||
-    capabilities.openWeights !== 'both' ||
+    reasoning !== 'both' ||
     releaseDate.preset !== 'any' ||
     searchQuery.trim() !== '';
 
   const clearFilters = () => {
     setSelectedCompanies(new Set());
     setSelectedFamilies(new Set());
-    setCapabilities({
-      reasoning: 'both',
-      tools: 'both',
-      attachments: 'both',
-      openWeights: 'both',
-    });
+    setReasoning('both');
     setReleaseDate({ preset: 'any', customFrom: '', customTo: '' });
     setSearchQuery('');
   };
@@ -947,23 +909,8 @@ export default function ExploreModels() {
       <div className="flex flex-wrap gap-3 items-center">
         <CapabilityFilter
           label="Reasoning"
-          value={capabilities.reasoning}
-          onChange={(value) => setCapabilities((prev) => ({ ...prev, reasoning: value }))}
-        />
-        <CapabilityFilter
-          label="Tools"
-          value={capabilities.tools}
-          onChange={(value) => setCapabilities((prev) => ({ ...prev, tools: value }))}
-        />
-        <CapabilityFilter
-          label="Attachments"
-          value={capabilities.attachments}
-          onChange={(value) => setCapabilities((prev) => ({ ...prev, attachments: value }))}
-        />
-        <CapabilityFilter
-          label="Open Weights"
-          value={capabilities.openWeights}
-          onChange={(value) => setCapabilities((prev) => ({ ...prev, openWeights: value }))}
+          value={reasoning}
+          onChange={setReasoning}
         />
 
         <ReleaseDateDropdown value={releaseDate} onChange={setReleaseDate} />
