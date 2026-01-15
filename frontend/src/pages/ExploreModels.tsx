@@ -383,26 +383,57 @@ function ReleaseDateDropdown({
   );
 }
 
-// Capability checkbox component
-function CapabilityCheckbox({
+// Tri-state capability filter: 'both' | 'yes' | 'no'
+type CapabilityValue = 'both' | 'yes' | 'no';
+
+function CapabilityFilter({
   label,
-  checked,
+  value,
   onChange,
 }: {
   label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
+  value: CapabilityValue;
+  onChange: (value: CapabilityValue) => void;
 }) {
   return (
-    <label className="flex items-center gap-2 text-sm cursor-pointer whitespace-nowrap">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="rounded border-border text-amber focus:ring-amber"
-      />
-      <span>{label}</span>
-    </label>
+    <div className="flex items-center gap-2 text-sm whitespace-nowrap">
+      <span className="text-ink-muted">{label}:</span>
+      <div className="flex rounded-md border border-border overflow-hidden">
+        <button
+          type="button"
+          onClick={() => onChange('both')}
+          className={`px-2 py-0.5 text-xs ${
+            value === 'both'
+              ? 'bg-amber text-white'
+              : 'bg-white text-ink hover:bg-paper'
+          }`}
+        >
+          Both
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange('yes')}
+          className={`px-2 py-0.5 text-xs border-l border-border ${
+            value === 'yes'
+              ? 'bg-amber text-white'
+              : 'bg-white text-ink hover:bg-paper'
+          }`}
+        >
+          Yes
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange('no')}
+          className={`px-2 py-0.5 text-xs border-l border-border ${
+            value === 'no'
+              ? 'bg-amber text-white'
+              : 'bg-white text-ink hover:bg-paper'
+          }`}
+        >
+          No
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -512,12 +543,24 @@ export default function ExploreModels() {
     const families = searchParams.get('families');
     return families ? new Set(families.split(',')) : new Set<string>();
   };
-  const getInitialCapabilities = () => ({
-    reasoning: searchParams.get('reasoning') === '1',
-    tools: searchParams.get('tools') === '1',
-    attachments: searchParams.get('attachments') === '1',
-    openWeights: searchParams.get('openWeights') === '1',
-  });
+  const getInitialCapabilities = (): {
+    reasoning: CapabilityValue;
+    tools: CapabilityValue;
+    attachments: CapabilityValue;
+    openWeights: CapabilityValue;
+  } => {
+    const parseCapability = (param: string | null): CapabilityValue => {
+      if (param === 'yes') return 'yes';
+      if (param === 'no') return 'no';
+      return 'both';
+    };
+    return {
+      reasoning: parseCapability(searchParams.get('reasoning')),
+      tools: parseCapability(searchParams.get('tools')),
+      attachments: parseCapability(searchParams.get('attachments')),
+      openWeights: parseCapability(searchParams.get('openWeights')),
+    };
+  };
   const getInitialReleaseDate = (): ReleaseDateFilter => {
     const preset = (searchParams.get('releasePreset') as ReleaseDatePreset) || 'any';
     return {
@@ -549,10 +592,10 @@ export default function ExploreModels() {
     if (searchQuery.trim()) params.set('q', searchQuery.trim());
     if (selectedCompanies.size > 0) params.set('companies', Array.from(selectedCompanies).join(','));
     if (selectedFamilies.size > 0) params.set('families', Array.from(selectedFamilies).join(','));
-    if (capabilities.reasoning) params.set('reasoning', '1');
-    if (capabilities.tools) params.set('tools', '1');
-    if (capabilities.attachments) params.set('attachments', '1');
-    if (capabilities.openWeights) params.set('openWeights', '1');
+    if (capabilities.reasoning !== 'both') params.set('reasoning', capabilities.reasoning);
+    if (capabilities.tools !== 'both') params.set('tools', capabilities.tools);
+    if (capabilities.attachments !== 'both') params.set('attachments', capabilities.attachments);
+    if (capabilities.openWeights !== 'both') params.set('openWeights', capabilities.openWeights);
     if (releaseDate.preset !== 'any') {
       params.set('releasePreset', releaseDate.preset);
       if (releaseDate.preset === 'custom') {
@@ -610,18 +653,26 @@ export default function ExploreModels() {
       result = result.filter((m) => m.family && selectedFamilies.has(m.family));
     }
 
-    // Filter by capabilities (AND logic - must have ALL selected)
-    if (capabilities.reasoning) {
+    // Filter by capabilities (tri-state: both/yes/no)
+    if (capabilities.reasoning === 'yes') {
       result = result.filter((m) => m.supports_reasoning === 1);
+    } else if (capabilities.reasoning === 'no') {
+      result = result.filter((m) => m.supports_reasoning !== 1);
     }
-    if (capabilities.tools) {
+    if (capabilities.tools === 'yes') {
       result = result.filter((m) => m.supports_tool_calls === 1);
+    } else if (capabilities.tools === 'no') {
+      result = result.filter((m) => m.supports_tool_calls !== 1);
     }
-    if (capabilities.attachments) {
+    if (capabilities.attachments === 'yes') {
       result = result.filter((m) => m.supports_attachments === 1);
+    } else if (capabilities.attachments === 'no') {
+      result = result.filter((m) => m.supports_attachments !== 1);
     }
-    if (capabilities.openWeights) {
+    if (capabilities.openWeights === 'yes') {
       result = result.filter((m) => m.open_weights === 1);
+    } else if (capabilities.openWeights === 'no') {
+      result = result.filter((m) => m.open_weights !== 1);
     }
 
     // Filter by release date (using string comparison for consistency)
@@ -785,10 +836,10 @@ export default function ExploreModels() {
   const hasActiveFilters =
     selectedCompanies.size > 0 ||
     selectedFamilies.size > 0 ||
-    capabilities.reasoning ||
-    capabilities.tools ||
-    capabilities.attachments ||
-    capabilities.openWeights ||
+    capabilities.reasoning !== 'both' ||
+    capabilities.tools !== 'both' ||
+    capabilities.attachments !== 'both' ||
+    capabilities.openWeights !== 'both' ||
     releaseDate.preset !== 'any' ||
     searchQuery.trim() !== '';
 
@@ -796,10 +847,10 @@ export default function ExploreModels() {
     setSelectedCompanies(new Set());
     setSelectedFamilies(new Set());
     setCapabilities({
-      reasoning: false,
-      tools: false,
-      attachments: false,
-      openWeights: false,
+      reasoning: 'both',
+      tools: 'both',
+      attachments: 'both',
+      openWeights: 'both',
     });
     setReleaseDate({ preset: 'any', customFrom: '', customTo: '' });
     setSearchQuery('');
@@ -894,29 +945,26 @@ export default function ExploreModels() {
 
       {/* Filters - Row 2 */}
       <div className="flex flex-wrap gap-3 items-center">
-        <div className="flex items-center gap-4 px-3 py-2 border border-border rounded-lg bg-white">
-          <span className="text-sm text-ink-muted">Capabilities:</span>
-          <CapabilityCheckbox
-            label="Reasoning"
-            checked={capabilities.reasoning}
-            onChange={(checked) => setCapabilities((prev) => ({ ...prev, reasoning: checked }))}
-          />
-          <CapabilityCheckbox
-            label="Tools"
-            checked={capabilities.tools}
-            onChange={(checked) => setCapabilities((prev) => ({ ...prev, tools: checked }))}
-          />
-          <CapabilityCheckbox
-            label="Attachments"
-            checked={capabilities.attachments}
-            onChange={(checked) => setCapabilities((prev) => ({ ...prev, attachments: checked }))}
-          />
-          <CapabilityCheckbox
-            label="Open Weights"
-            checked={capabilities.openWeights}
-            onChange={(checked) => setCapabilities((prev) => ({ ...prev, openWeights: checked }))}
-          />
-        </div>
+        <CapabilityFilter
+          label="Reasoning"
+          value={capabilities.reasoning}
+          onChange={(value) => setCapabilities((prev) => ({ ...prev, reasoning: value }))}
+        />
+        <CapabilityFilter
+          label="Tools"
+          value={capabilities.tools}
+          onChange={(value) => setCapabilities((prev) => ({ ...prev, tools: value }))}
+        />
+        <CapabilityFilter
+          label="Attachments"
+          value={capabilities.attachments}
+          onChange={(value) => setCapabilities((prev) => ({ ...prev, attachments: value }))}
+        />
+        <CapabilityFilter
+          label="Open Weights"
+          value={capabilities.openWeights}
+          onChange={(value) => setCapabilities((prev) => ({ ...prev, openWeights: value }))}
+        />
 
         <ReleaseDateDropdown value={releaseDate} onChange={setReleaseDate} />
 
