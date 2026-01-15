@@ -78,6 +78,52 @@ export default function PromptLab() {
                 }
               }
               // If existing is Haiku and this isn't, keep existing
+            } else if (model.company === 'Google') {
+              // For Google, prefer the most recent Flash model (not Pro, not preview, not "latest")
+              const isValidFlash = (name: string) => {
+                const lower = name.toLowerCase();
+                if (!lower.includes('flash')) return false;
+                if (lower.includes('pro')) return false;
+                if (lower.includes('preview')) return false;
+                if (lower.includes('latest')) return false;
+                return true;
+              };
+              const modelIsValidFlash = isValidFlash(model.model_name);
+              const existingIsValidFlash = isValidFlash(existing.model_name);
+              if (modelIsValidFlash && !existingIsValidFlash) {
+                byCompany.set(model.company, model);
+              } else if (modelIsValidFlash && existingIsValidFlash) {
+                // Both are valid Flash - pick the newest
+                const existingDate = existing.released_at || '';
+                const modelDate = model.released_at || '';
+                if (modelDate > existingDate) {
+                  byCompany.set(model.company, model);
+                }
+              }
+              // If existing is valid Flash and this isn't, keep existing
+            } else if (model.company === 'xAI') {
+              // For xAI, prefer non-reasoning models
+              // Reasoning models: contain '-mini' OR contain 'reasoning' but not 'non-reasoning'
+              const isReasoning = (name: string) => {
+                const lower = name.toLowerCase();
+                if (lower.includes('-mini')) return true;
+                if (lower.includes('non-reasoning')) return false;
+                if (lower.includes('reasoning')) return true;
+                return false;
+              };
+              const modelIsReasoning = isReasoning(model.model_name);
+              const existingIsReasoning = isReasoning(existing.model_name);
+              if (!modelIsReasoning && existingIsReasoning) {
+                byCompany.set(model.company, model);
+              } else if (modelIsReasoning === existingIsReasoning) {
+                // Same type - pick the newest
+                const existingDate = existing.released_at || '';
+                const modelDate = model.released_at || '';
+                if (modelDate > existingDate) {
+                  byCompany.set(model.company, model);
+                }
+              }
+              // If existing is non-reasoning and this is reasoning, keep existing
             } else {
               // For other companies, pick the newest release
               const existingDate = existing.released_at || '';

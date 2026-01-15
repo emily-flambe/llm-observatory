@@ -142,6 +142,11 @@ function isGoogleChatModel(model: GoogleModel): boolean {
     return false;
   }
 
+  // Exclude image generation models
+  if (name.includes('imagen') || name.includes('-image')) {
+    return false;
+  }
+
   return true;
 }
 
