@@ -167,21 +167,40 @@ function MultiSelect({
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute top-full left-0 mt-1 bg-white border border-border rounded-lg shadow-lg z-20 min-w-[200px] max-h-64 overflow-y-auto">
-            {options.map((option) => (
-              <label
-                key={option}
-                className="flex items-center gap-2 px-3 py-2 hover:bg-paper cursor-pointer text-sm"
+          <div className="absolute top-full left-0 mt-1 bg-white border border-border rounded-lg shadow-lg z-20 min-w-[200px]">
+            <div className="flex gap-2 px-3 py-2 border-b border-border">
+              <button
+                type="button"
+                onClick={() => onChange(new Set(options))}
+                className="text-xs text-amber hover:underline"
               >
-                <input
-                  type="checkbox"
-                  checked={selected.has(option)}
-                  onChange={() => toggleValue(option)}
-                  className="rounded"
-                />
-                <span className="truncate">{option}</span>
-              </label>
-            ))}
+                Select all
+              </button>
+              <span className="text-ink-muted">|</span>
+              <button
+                type="button"
+                onClick={() => onChange(new Set())}
+                className="text-xs text-amber hover:underline"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              {options.map((option) => (
+                <label
+                  key={option}
+                  className="flex items-center gap-2 px-3 py-2 hover:bg-paper cursor-pointer text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(option)}
+                    onChange={() => toggleValue(option)}
+                    className="rounded"
+                  />
+                  <span className="truncate">{option}</span>
+                </label>
+              ))}
+            </div>
           </div>
         </>
       )}
