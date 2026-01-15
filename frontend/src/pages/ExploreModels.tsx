@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { Model, ModelsResponse } from '../types';
 
 type ColumnKey =
@@ -93,6 +94,22 @@ function formatBoolean(val: number | null): string {
   return val === 1 ? 'Yes' : 'No';
 }
 
+interface ReleaseDateFilter {
+  from: string;
+  to: string;
+}
+
+// Parse date string to comparable date string (YYYY-MM-DD) without timezone issues
+function toComparableDate(dateStr: string): string {
+  // If already in YYYY-MM-DD format, return as-is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return dateStr;
+  }
+  // Otherwise parse and format
+  const date = new Date(dateStr);
+  return date.toISOString().split('T')[0];
+}
+
 function parseModalities(jsonStr: string | null): string[] {
   if (!jsonStr) return [];
   try {
@@ -150,21 +167,40 @@ function MultiSelect({
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute top-full left-0 mt-1 bg-white border border-border rounded-lg shadow-lg z-20 min-w-[200px] max-h-64 overflow-y-auto">
-            {options.map((option) => (
-              <label
-                key={option}
-                className="flex items-center gap-2 px-3 py-2 hover:bg-paper cursor-pointer text-sm"
+          <div className="absolute top-full left-0 mt-1 bg-white border border-border rounded-lg shadow-lg z-20 min-w-[200px]">
+            <div className="flex gap-2 px-3 py-2 border-b border-border">
+              <button
+                type="button"
+                onClick={() => onChange(new Set(options))}
+                className="text-xs text-amber hover:underline"
               >
-                <input
-                  type="checkbox"
-                  checked={selected.has(option)}
-                  onChange={() => toggleValue(option)}
-                  className="rounded"
-                />
-                <span className="truncate">{option}</span>
-              </label>
-            ))}
+                Select all
+              </button>
+              <span className="text-ink-muted">|</span>
+              <button
+                type="button"
+                onClick={() => onChange(new Set())}
+                className="text-xs text-amber hover:underline"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              {options.map((option) => (
+                <label
+                  key={option}
+                  className="flex items-center gap-2 px-3 py-2 hover:bg-paper cursor-pointer text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(option)}
+                    onChange={() => toggleValue(option)}
+                    className="rounded"
+                  />
+                  <span className="truncate">{option}</span>
+                </label>
+              ))}
+            </div>
           </div>
         </>
       )}
@@ -233,6 +269,90 @@ function ColumnPicker({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// Release Date range filter component
+function DateRangeFilter({
+  value,
+  onChange,
+}: {
+  value: ReleaseDateFilter;
+  onChange: (value: ReleaseDateFilter) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <span className="text-ink-muted whitespace-nowrap">Released:</span>
+      <input
+        type="date"
+        value={value.from}
+        onChange={(e) => onChange({ ...value, from: e.target.value })}
+        aria-label="Release date from"
+        className="px-2 py-1.5 border border-border rounded-lg text-sm bg-white"
+      />
+      <span className="text-ink-muted">to</span>
+      <input
+        type="date"
+        value={value.to}
+        onChange={(e) => onChange({ ...value, to: e.target.value })}
+        aria-label="Release date to"
+        className="px-2 py-1.5 border border-border rounded-lg text-sm bg-white"
+      />
+    </div>
+  );
+}
+
+// Tri-state capability filter: 'both' | 'yes' | 'no'
+type CapabilityValue = 'both' | 'yes' | 'no';
+
+function CapabilityFilter({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: CapabilityValue;
+  onChange: (value: CapabilityValue) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-sm whitespace-nowrap">
+      <span className="text-ink-muted">{label}:</span>
+      <div className="flex rounded-md border border-border overflow-hidden">
+        <button
+          type="button"
+          onClick={() => onChange('both')}
+          className={`px-2 py-0.5 text-xs ${
+            value === 'both'
+              ? 'bg-amber text-white'
+              : 'bg-white text-ink hover:bg-paper'
+          }`}
+        >
+          Both
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange('yes')}
+          className={`px-2 py-0.5 text-xs border-l border-border ${
+            value === 'yes'
+              ? 'bg-amber text-white'
+              : 'bg-white text-ink hover:bg-paper'
+          }`}
+        >
+          Yes
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange('no')}
+          className={`px-2 py-0.5 text-xs border-l border-border ${
+            value === 'no'
+              ? 'bg-amber text-white'
+              : 'bg-white text-ink hover:bg-paper'
+          }`}
+        >
+          No
+        </button>
+      </div>
     </div>
   );
 }
@@ -328,13 +448,38 @@ function ExpandedRowContent({
 }
 
 export default function ExploreModels() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Parse URL params for initial state
+  const getInitialSearchQuery = () => searchParams.get('q') || '';
+  const getInitialCompanies = () => {
+    const companies = searchParams.get('companies');
+    return companies ? new Set(companies.split(',')) : new Set<string>();
+  };
+  const getInitialFamilies = () => {
+    const families = searchParams.get('families');
+    return families ? new Set(families.split(',')) : new Set<string>();
+  };
+  const getInitialReasoning = (): CapabilityValue => {
+    const param = searchParams.get('reasoning');
+    if (param === 'yes') return 'yes';
+    if (param === 'no') return 'no';
+    return 'both';
+  };
+  const getInitialReleaseDate = (): ReleaseDateFilter => ({
+    from: searchParams.get('releaseFrom') || '',
+    to: searchParams.get('releaseTo') || '',
+  });
+
   // Filter state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCompanies, setSelectedCompanies] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState(getInitialSearchQuery);
+  const [selectedCompanies, setSelectedCompanies] = useState<Set<string>>(getInitialCompanies);
+  const [selectedFamilies, setSelectedFamilies] = useState<Set<string>>(getInitialFamilies);
+  const [reasoning, setReasoning] = useState<CapabilityValue>(getInitialReasoning);
+  const [releaseDate, setReleaseDate] = useState<ReleaseDateFilter>(getInitialReleaseDate);
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(loadSavedColumns);
 
   // Sort state - default to company ASC, then display_name ASC
@@ -343,6 +488,24 @@ export default function ExploreModels() {
 
   // Expanded rows
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  // Update URL params when filters change
+  const updateUrlParams = useCallback(() => {
+    const params = new URLSearchParams();
+
+    if (searchQuery.trim()) params.set('q', searchQuery.trim());
+    if (selectedCompanies.size > 0) params.set('companies', Array.from(selectedCompanies).join(','));
+    if (selectedFamilies.size > 0) params.set('families', Array.from(selectedFamilies).join(','));
+    if (reasoning !== 'both') params.set('reasoning', reasoning);
+    if (releaseDate.from) params.set('releaseFrom', releaseDate.from);
+    if (releaseDate.to) params.set('releaseTo', releaseDate.to);
+
+    setSearchParams(params, { replace: true });
+  }, [searchQuery, selectedCompanies, selectedFamilies, reasoning, releaseDate, setSearchParams]);
+
+  useEffect(() => {
+    updateUrlParams();
+  }, [updateUrlParams]);
 
   useEffect(() => {
     fetch('/api/models')
@@ -367,6 +530,11 @@ export default function ExploreModels() {
     return [...new Set(models.map((m) => m.company))].sort();
   }, [models]);
 
+  // Extract unique families for the filter dropdown
+  const families = useMemo(() => {
+    return [...new Set(models.map((m) => m.family).filter((f): f is string => !!f))].sort();
+  }, [models]);
+
   // Filter models
   const filteredModels = useMemo(() => {
     let result = models;
@@ -374,6 +542,42 @@ export default function ExploreModels() {
     // Filter by company
     if (selectedCompanies.size > 0) {
       result = result.filter((m) => selectedCompanies.has(m.company));
+    }
+
+    // Filter by family
+    if (selectedFamilies.size > 0) {
+      result = result.filter((m) => m.family && selectedFamilies.has(m.family));
+    }
+
+    // Filter by reasoning capability (tri-state: both/yes/no)
+    if (reasoning === 'yes') {
+      result = result.filter((m) => m.supports_reasoning === 1);
+    } else if (reasoning === 'no') {
+      result = result.filter((m) => m.supports_reasoning !== 1);
+    }
+
+    // Filter by release date (using string comparison for consistency)
+    let fromDate = releaseDate.from;
+    let toDate = releaseDate.to;
+
+    // Swap if from > to (auto-correct invalid range)
+    if (fromDate && toDate && fromDate > toDate) {
+      [fromDate, toDate] = [toDate, fromDate];
+    }
+
+    if (fromDate) {
+      result = result.filter((m) => {
+        if (!m.released_at) return false;
+        const modelDate = toComparableDate(m.released_at);
+        return modelDate >= fromDate;
+      });
+    }
+    if (toDate) {
+      result = result.filter((m) => {
+        if (!m.released_at) return false;
+        const modelDate = toComparableDate(m.released_at);
+        return modelDate <= toDate;
+      });
     }
 
     // Filter by search query
@@ -391,7 +595,7 @@ export default function ExploreModels() {
     }
 
     return result;
-  }, [models, selectedCompanies, searchQuery]);
+  }, [models, selectedCompanies, selectedFamilies, reasoning, releaseDate, searchQuery]);
 
   // Sort models
   const sortedModels = useMemo(() => {
@@ -488,10 +692,19 @@ export default function ExploreModels() {
     });
   };
 
-  const hasActiveFilters = selectedCompanies.size > 0 || searchQuery.trim() !== '';
+  const hasActiveFilters =
+    selectedCompanies.size > 0 ||
+    selectedFamilies.size > 0 ||
+    reasoning !== 'both' ||
+    releaseDate.from !== '' ||
+    releaseDate.to !== '' ||
+    searchQuery.trim() !== '';
 
   const clearFilters = () => {
     setSelectedCompanies(new Set());
+    setSelectedFamilies(new Set());
+    setReasoning('both');
+    setReleaseDate({ from: '', to: '' });
     setSearchQuery('');
   };
 
@@ -551,7 +764,7 @@ export default function ExploreModels() {
         </p>
       </div>
 
-      {/* Filters row */}
+      {/* Filters - Row 1 */}
       <div className="flex flex-wrap gap-3 items-center">
         <input
           type="text"
@@ -568,11 +781,29 @@ export default function ExploreModels() {
           onChange={setSelectedCompanies}
         />
 
+        <MultiSelect
+          label="All Families"
+          options={families}
+          selected={selectedFamilies}
+          onChange={setSelectedFamilies}
+        />
+
         <ColumnPicker
           columns={ALL_COLUMNS}
           visibleColumns={visibleColumns}
           onChange={setVisibleColumns}
         />
+      </div>
+
+      {/* Filters - Row 2 */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <CapabilityFilter
+          label="Reasoning"
+          value={reasoning}
+          onChange={setReasoning}
+        />
+
+        <DateRangeFilter value={releaseDate} onChange={setReleaseDate} />
 
         {hasActiveFilters && (
           <button
