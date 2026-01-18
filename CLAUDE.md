@@ -2,6 +2,14 @@
 
 Cloudflare Workers app comparing LLM responses across providers.
 
+## CRITICAL: Cloudflare Worker Rules
+
+**NEVER create new workers.** There is exactly ONE worker: `llm-observatory`. Do not create preview workers, staging workers, or any other workers.
+
+**NEVER delete the worker.** Deleting the worker removes all secrets which cannot be recovered without manual re-entry.
+
+**NEVER use `wrangler delete`.** If you think you need to delete something, ask the user first.
+
 ## Commands
 
 ```bash
