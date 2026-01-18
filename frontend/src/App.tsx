@@ -14,7 +14,7 @@ import Landing from './pages/Landing';
 import ExploreModels from './pages/ExploreModels';
 import { parseBigQueryTimestamp } from './utils/date';
 import { renderMarkdown } from './utils/markdown';
-import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection } from './types';
+import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection, CollectionDetail } from './types';
 
 function ObserveNavTabs() {
   const pathname = window.location.pathname;
@@ -201,7 +201,7 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
             {expanded ? 'Collapse' : 'Expand'}
           </button>
         </div>
-        {/* Row 2: Metadata + Use Prompt */}
+        {/* Row 2: Metadata + Manage */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 text-xs text-ink-muted">
             <span>{date.toLocaleDateString()}</span>
@@ -213,7 +213,7 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
             to={`/observe?prompt=${encodeURIComponent(query.prompt)}`}
             className="text-xs text-amber hover:text-amber-dark"
           >
-            Use Prompt
+            Manage
           </Link>
         </div>
       </div>
@@ -886,6 +886,18 @@ function ObservationDetailPage() {
                 className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-white"
               >
                 Edit
+              </Link>
+              <Link
+                to={`/observe?${new URLSearchParams({
+                  prompt: collection.prompt_text,
+                  models: (collection as CollectionDetail).models?.map((m) => m.id).join(',') || '',
+                  ...(collection.display_name ? { name: `${collection.display_name} (Copy)` } : {}),
+                  ...(collection.schedule_type ? { schedule: collection.schedule_type } : {}),
+                  ...(collection.cron_expression ? { cron: collection.cron_expression } : {}),
+                }).toString()}`}
+                className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-white"
+              >
+                Duplicate
               </Link>
               {!showDisableConfirm ? (
                 <button

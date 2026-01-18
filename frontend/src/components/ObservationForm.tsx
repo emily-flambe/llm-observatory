@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import type { Model, Tag } from '../types';
 import ModelSelector from './ModelSelector';
 import { renderMarkdown } from '../utils/markdown';
@@ -37,18 +37,26 @@ interface ObservationDetail {
 }
 
 export default function ObservationForm({ editId }: ObservationFormProps) {
+  const [searchParams] = useSearchParams();
   const [models, setModels] = useState<Model[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingObservation, setLoadingObservation] = useState(false);
 
+  // Get initial values from query params (for duplication/pre-fill)
+  const initialPrompt = searchParams.get('prompt') || '';
+  const initialModels = searchParams.get('models')?.split(',').filter(Boolean) || [];
+  const initialName = searchParams.get('name') || '';
+  const initialSchedule = searchParams.get('schedule') as 'daily' | 'weekly' | 'monthly' | 'custom' | null;
+  const initialCron = searchParams.get('cron') || '';
+
   // Form state
-  const [prompt, setPrompt] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
+  const [prompt, setPrompt] = useState(initialPrompt);
+  const [displayName, setDisplayName] = useState(initialName);
+  const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set(initialModels));
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
-  const [scheduleType, setScheduleType] = useState<'none' | 'daily' | 'weekly' | 'monthly' | 'custom'>('none');
-  const [cronExpression, setCronExpression] = useState('0 6 * * *');
+  const [scheduleType, setScheduleType] = useState<'none' | 'daily' | 'weekly' | 'monthly' | 'custom'>(initialSchedule || 'none');
+  const [cronExpression, setCronExpression] = useState(initialCron || '0 6 * * *');
   const [wordLimit, setWordLimit] = useState('50');
   const [useWordLimit, setUseWordLimit] = useState(true);
 

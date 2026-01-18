@@ -38,24 +38,28 @@ vi.mock('../../src/services/bigquery', () => ({
   extractProductFamily: vi.fn().mockReturnValue('TestProduct'),
 }));
 
-import {
-  createObservation,
-  getObservation,
-  getObservationVersionModels,
-  getObservationTags,
-} from '../../src/services/observations';
-
-// Create a minimal test app that mirrors the observation creation route
+// Create a test app that mirrors the actual observation creation route
 function createTestApp() {
   const app = new Hono<{ Bindings: Env }>();
 
-  // Simplified version of POST /api/observations with auth
+  // Matches the actual implementation in src/routes/api.ts
   app.post('/api/observations', async (c) => {
+    // Validate Bearer token
     const authHeader = c.req.header('Authorization');
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
 
-    if (!token || token !== c.env.ADMIN_API_KEY) {
-      return c.json({ error: 'Invalid or missing API key' }, 401);
+    // Check if ADMIN_API_KEY is configured
+    if (!c.env.ADMIN_API_KEY) {
+      console.error('ADMIN_API_KEY secret is not configured');
+      return c.json({ error: 'Server configuration error: ADMIN_API_KEY not set' }, 500);
+    }
+
+    if (!token) {
+      return c.json({ error: 'Missing API key - provide Authorization: Bearer <key> header' }, 401);
+    }
+
+    if (token !== c.env.ADMIN_API_KEY.trim()) {
+      return c.json({ error: 'Invalid API key' }, 401);
     }
 
     const body = await c.req.json<{
@@ -81,13 +85,59 @@ describe('Observations API Routes', () => {
     DB: {} as D1Database,
   } as unknown as Env;
 
+  const mockEnvNoApiKey = {
+    ADMIN_API_KEY: '', // Empty/falsy
+    DB: {} as D1Database,
+  } as unknown as Env;
+
+  const mockEnvUndefinedApiKey = {
+    // ADMIN_API_KEY not set at all
+    DB: {} as D1Database,
+  } as unknown as Env;
+
   beforeEach(() => {
     app = createTestApp();
     vi.clearAllMocks();
   });
 
-  describe('POST /api/observations', () => {
-    it('rejects requests without Authorization header', async () => {
+  describe('POST /api/observations - Authentication', () => {
+    it('returns 500 when ADMIN_API_KEY is not configured', async () => {
+      const res = await app.request('/api/observations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer some-key',
+        },
+        body: JSON.stringify({
+          prompt_text: 'Test prompt',
+          model_ids: ['model-1'],
+        }),
+      }, mockEnvUndefinedApiKey);
+
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.error).toBe('Server configuration error: ADMIN_API_KEY not set');
+    });
+
+    it('returns 500 when ADMIN_API_KEY is empty string', async () => {
+      const res = await app.request('/api/observations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer some-key',
+        },
+        body: JSON.stringify({
+          prompt_text: 'Test prompt',
+          model_ids: ['model-1'],
+        }),
+      }, mockEnvNoApiKey);
+
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.error).toBe('Server configuration error: ADMIN_API_KEY not set');
+    });
+
+    it('returns 401 with helpful message when Authorization header is missing', async () => {
       const res = await app.request('/api/observations', {
         method: 'POST',
         headers: {
@@ -101,10 +151,10 @@ describe('Observations API Routes', () => {
 
       expect(res.status).toBe(401);
       const body = await res.json();
-      expect(body.error).toBe('Invalid or missing API key');
+      expect(body.error).toBe('Missing API key - provide Authorization: Bearer <key> header');
     });
 
-    it('rejects requests with invalid API key', async () => {
+    it('returns 401 when API key is invalid', async () => {
       const res = await app.request('/api/observations', {
         method: 'POST',
         headers: {
@@ -119,15 +169,15 @@ describe('Observations API Routes', () => {
 
       expect(res.status).toBe(401);
       const body = await res.json();
-      expect(body.error).toBe('Invalid or missing API key');
+      expect(body.error).toBe('Invalid API key');
     });
 
-    it('rejects requests with malformed Authorization header', async () => {
+    it('returns 401 when using Basic auth instead of Bearer', async () => {
       const res = await app.request('/api/observations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: 'Basic dXNlcjpwYXNz', // Basic auth instead of Bearer
+          Authorization: 'Basic dXNlcjpwYXNz',
         },
         body: JSON.stringify({
           prompt_text: 'Test prompt',
@@ -137,10 +187,10 @@ describe('Observations API Routes', () => {
 
       expect(res.status).toBe(401);
       const body = await res.json();
-      expect(body.error).toBe('Invalid or missing API key');
+      expect(body.error).toBe('Missing API key - provide Authorization: Bearer <key> header');
     });
 
-    it('accepts requests with valid API key', async () => {
+    it('accepts valid API key and creates observation', async () => {
       const res = await app.request('/api/observations', {
         method: 'POST',
         headers: {
@@ -159,16 +209,50 @@ describe('Observations API Routes', () => {
       expect(body.observation.prompt_text).toBe('Test prompt');
     });
 
-    it('validates required fields after auth', async () => {
+    it('trims whitespace from API key before comparison', async () => {
+      const res = await app.request('/api/observations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer test-api-key-12345  ', // trailing whitespace
+        },
+        body: JSON.stringify({
+          prompt_text: 'Test prompt',
+          model_ids: ['model-1'],
+        }),
+      }, mockEnv);
+
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.created).toBe(true);
+    });
+
+    it('handles API key with leading whitespace', async () => {
+      const res = await app.request('/api/observations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer   test-api-key-12345', // leading whitespace after Bearer
+        },
+        body: JSON.stringify({
+          prompt_text: 'Test prompt',
+          model_ids: ['model-1'],
+        }),
+      }, mockEnv);
+
+      expect(res.status).toBe(201);
+    });
+  });
+
+  describe('POST /api/observations - Input Validation', () => {
+    it('validates required fields after successful auth', async () => {
       const res = await app.request('/api/observations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: 'Bearer test-api-key-12345',
         },
-        body: JSON.stringify({
-          // Missing prompt_text and model_ids
-        }),
+        body: JSON.stringify({}),
       }, mockEnv);
 
       expect(res.status).toBe(400);
@@ -185,7 +269,24 @@ describe('Observations API Routes', () => {
         },
         body: JSON.stringify({
           prompt_text: 'Test prompt',
-          model_ids: [], // Empty array
+          model_ids: [],
+        }),
+      }, mockEnv);
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe('prompt_text and model_ids are required');
+    });
+
+    it('validates prompt_text is present', async () => {
+      const res = await app.request('/api/observations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer test-api-key-12345',
+        },
+        body: JSON.stringify({
+          model_ids: ['model-1'],
         }),
       }, mockEnv);
 
@@ -198,7 +299,6 @@ describe('Observations API Routes', () => {
 
 describe('Word Limit Validation', () => {
   it('validates word limit is between 1 and 500', () => {
-    // Test the validation logic that's used in the frontend
     const validateWordLimit = (value: string, useWordLimit: boolean): { valid: boolean; error: string | null } => {
       if (!useWordLimit) return { valid: true, error: null };
       const num = value ? parseInt(value, 10) : NaN;
