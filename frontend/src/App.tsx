@@ -1021,7 +1021,7 @@ function Layout({ children }: { children: React.ReactNode }) {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-semibold tracking-tight text-ink">LLM Observatory</h1>
-                <img src="/bee.png" alt="Pesky bee" className="w-8 h-8" />
+                <img src="/bee.png" alt="Pesky bee" className="w-12 h-12" />
               </div>
               <p className="text-sm text-ink-muted mt-0.5">
                 Release the swarm (for science)
