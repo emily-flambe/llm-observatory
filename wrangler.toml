@@ -37,10 +37,10 @@ database_id = "43f364e4-fd30-4ddf-b068-de171232eddf"
 port = 8787
 
 # Cron triggers:
-# - Daily model sync at 6 AM UTC
-# - Hourly collection scheduler at :00
+# - Every minute: runs observation/collection schedulers (checks individual cron expressions)
+# - Model sync checks hour === 6 in code to run only at 6 AM UTC
 [triggers]
-crons = ["0 6 * * *", "0 * * * *"]
+crons = ["* * * * *"]
 
 [observability]
 enabled = true

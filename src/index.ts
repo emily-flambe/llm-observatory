@@ -5,6 +5,7 @@ import { api } from './routes/api';
 import { syncAllProviders } from './services/model-sync';
 import { syncBasellmMetadata } from './services/basellm';
 import { runScheduledCollections } from './services/collection-scheduler';
+import { runScheduledObservations } from './services/observation-scheduler';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -30,18 +31,29 @@ async function fullModelSync(env: Env) {
 export default {
   fetch: app.fetch,
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    const hour = new Date(event.scheduledTime).getUTCHours();
+    const scheduledTime = new Date(event.scheduledTime);
+    const hour = scheduledTime.getUTCHours();
+    const minute = scheduledTime.getUTCMinutes();
 
-    // Model sync runs at 6 AM UTC
-    if (hour === 6) {
+    // Model sync runs once at 6:00 AM UTC (hour=6, minute=0)
+    if (hour === 6 && minute === 0) {
       ctx.waitUntil(fullModelSync(env));
     }
 
-    // Collection scheduler runs every hour
+    // Collection scheduler runs every minute (checks cron expressions)
     ctx.waitUntil(
       runScheduledCollections(env).then((result) => {
         if (result.ran > 0) {
           console.log(`Scheduled collections: ran ${result.ran} of ${result.checked} collections`);
+        }
+      })
+    );
+
+    // Observation scheduler runs every minute (checks cron expressions)
+    ctx.waitUntil(
+      runScheduledObservations(env).then((result) => {
+        if (result.ran > 0) {
+          console.log(`Scheduled observations: ran ${result.ran} of ${result.checked} observations`);
         }
       })
     );

@@ -395,7 +395,8 @@ async function runObservationInternal(
     let outputTokens = 0;
 
     try {
-      const provider = createLLMProvider(model.id, model.provider, model.model_name, env);
+      const grounded = model.grounded === 1;
+      const provider = createLLMProvider(model.id, model.provider, model.model_name, env, grounded);
       const start = Date.now();
       const response = await provider.complete({ prompt: observation.prompt_text });
       latencyMs = Date.now() - start;
@@ -567,7 +568,8 @@ async function runSingleModel(
   let outputTokens = 0;
 
   try {
-    const provider = createLLMProvider(model.id, model.provider, model.model_name, env);
+    const grounded = model.grounded === 1;
+    const provider = createLLMProvider(model.id, model.provider, model.model_name, env, grounded);
     const start = Date.now();
     const response = await provider.complete({ prompt: observation.prompt_text });
     latencyMs = Date.now() - start;
