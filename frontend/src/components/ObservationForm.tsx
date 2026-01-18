@@ -294,7 +294,10 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
         // Update existing observation - no results display needed
         const res = await fetch(`/api/observations/${editId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
           body: JSON.stringify({
             display_name: displayName || null,
             model_ids: Array.from(selectedModels),
@@ -303,6 +306,18 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
             cron_expression: finalCron,
           }),
         });
+
+        // Handle auth errors specifically
+        if (res.status === 401 || res.status === 500) {
+          const data = (await res.json()) as { error?: string };
+          const errorMsg = data.error || (res.status === 401 ? 'Invalid API key' : 'Server error');
+          if (res.status === 401 || errorMsg.toLowerCase().includes('api key')) {
+            setApiKeyError(errorMsg);
+            setIsSubmitting(false);
+            return;
+          }
+          throw new Error(errorMsg);
+        }
 
         if (!res.ok) {
           const data = (await res.json()) as { error?: string };
@@ -681,37 +696,35 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
 
         {/* Footer with API key and submit button */}
         <div className="px-6 py-4 bg-paper-dark border-t border-border space-y-3">
-          {/* API key input - required for running observations */}
-          {!isEditing && (
-            <div className="space-y-1">
-              <div className="flex items-center gap-3">
-                <label htmlFor="apiKey" className="text-sm font-medium text-ink whitespace-nowrap">
-                  API Key
-                </label>
-                <input
-                  type="password"
-                  id="apiKey"
-                  value={apiKey}
-                  onChange={(e) => {
-                    setApiKey(e.target.value);
-                    setApiKeyError(null); // Clear error when user types
-                  }}
-                  placeholder="Required to run observation"
-                  className={`flex-1 px-3 py-2 rounded-lg text-sm border focus:ring-1 ${
-                    apiKeyError
-                      ? 'border-error focus:border-error focus:ring-error'
-                      : 'border-border focus:border-amber focus:ring-amber'
-                  }`}
-                />
-              </div>
-              {apiKeyError && (
-                <p className="text-sm text-error ml-[4.5rem]">{apiKeyError}</p>
-              )}
+          {/* API key input - required for all observation operations */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <label htmlFor="apiKey" className="text-sm font-medium text-ink whitespace-nowrap">
+                API Key
+              </label>
+              <input
+                type="password"
+                id="apiKey"
+                value={apiKey}
+                onChange={(e) => {
+                  setApiKey(e.target.value);
+                  setApiKeyError(null); // Clear error when user types
+                }}
+                placeholder={isEditing ? 'Required to save changes' : 'Required to run observation'}
+                className={`flex-1 px-3 py-2 rounded-lg text-sm border focus:ring-1 ${
+                  apiKeyError
+                    ? 'border-error focus:border-error focus:ring-error'
+                    : 'border-border focus:border-amber focus:ring-amber'
+                }`}
+              />
             </div>
-          )}
+            {apiKeyError && (
+              <p className="text-sm text-error ml-[4.5rem]">{apiKeyError}</p>
+            )}
+          </div>
           <button
             onClick={handleSubmit}
-            disabled={isSubmitting || !prompt.trim() || selectedModels.size === 0 || !wordLimitValid || (!isEditing && !apiKey)}
+            disabled={isSubmitting || !prompt.trim() || selectedModels.size === 0 || (!isEditing && !wordLimitValid) || !apiKey}
             className="w-full btn-primary py-3 rounded-lg font-medium disabled:opacity-50"
           >
             {isSubmitting

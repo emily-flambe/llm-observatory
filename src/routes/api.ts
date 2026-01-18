@@ -823,8 +823,25 @@ api.post('/observations', async (c) => {
   }
 });
 
-// Update observation (creates new version if models/schedule change)
+// Update observation (creates new version if models/schedule change) - requires API key
 api.put('/observations/:id', async (c) => {
+  // Validate Bearer token
+  const authHeader = c.req.header('Authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+
+  if (!c.env.ADMIN_API_KEY) {
+    console.error('ADMIN_API_KEY secret is not configured');
+    return c.json({ error: 'Server configuration error: ADMIN_API_KEY not set' }, 500);
+  }
+
+  if (!token) {
+    return c.json({ error: 'Missing API key - provide Authorization: Bearer <key> header' }, 401);
+  }
+
+  if (token !== c.env.ADMIN_API_KEY.trim()) {
+    return c.json({ error: 'Invalid API key' }, 401);
+  }
+
   const { id } = c.req.param();
   const body = await c.req.json<{
     display_name?: string;
