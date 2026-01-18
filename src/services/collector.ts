@@ -76,7 +76,8 @@ export async function collectForTopic(
   let error: string | null = null;
 
   try {
-    const provider = createLLMProvider(model.id, model.provider, model.model_name, env);
+    const grounded = model.grounded === 1;
+    const provider = createLLMProvider(model.id, model.provider, model.model_name, env, grounded);
     const result = await provider.complete({ prompt });
     rawResponse = result.content;
     reasoningContent = result.reasoningContent ?? null;
