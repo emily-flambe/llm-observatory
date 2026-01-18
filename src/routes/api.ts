@@ -544,6 +544,209 @@ api.get('/observations/:id', async (c) => {
   });
 });
 
+// Run a single model for an observation (used for progressive results)
+async function runSingleModel(
+  env: Env,
+  db: D1Database,
+  observation: { id: string; prompt_text: string; current_version: number },
+  modelId: string,
+  promptId: string,
+  collectedAt: string
+): Promise<{ modelId: string; success: boolean; latencyMs?: number; error?: string; response?: string }> {
+  const model = await getModel(db, modelId);
+  if (!model) {
+    return { modelId, success: false, error: 'Model not found' };
+  }
+
+  let responseContent: string | null = null;
+  let reasoningContent: string | null = null;
+  let errorMsg: string | null = null;
+  let latencyMs = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
+
+  try {
+    const provider = createLLMProvider(model.id, model.provider, model.model_name, env);
+    const start = Date.now();
+    const response = await provider.complete({ prompt: observation.prompt_text });
+    latencyMs = Date.now() - start;
+    responseContent = response.content;
+    reasoningContent = response.reasoningContent ?? null;
+    inputTokens = response.inputTokens ?? 0;
+    outputTokens = response.outputTokens ?? 0;
+  } catch (err) {
+    errorMsg = err instanceof Error ? err.message : 'Unknown error';
+  }
+
+  // Calculate costs
+  let inputCost: number | null = null;
+  let outputCost: number | null = null;
+  if (model.input_price_per_m !== null && inputTokens > 0) {
+    inputCost = (inputTokens / 1_000_000) * model.input_price_per_m;
+  }
+  if (model.output_price_per_m !== null && outputTokens > 0) {
+    outputCost = (outputTokens / 1_000_000) * model.output_price_per_m;
+  }
+
+  // Save to BigQuery
+  const bqRow: BigQueryRow = {
+    id: crypto.randomUUID(),
+    prompt_id: promptId,
+    collected_at: collectedAt,
+    source: 'observation',
+    company: extractCompany(model.provider, model.model_name),
+    product: extractProductFamily(model.model_name),
+    model: model.model_name,
+    topic_id: null,
+    topic_name: null,
+    prompt_template_id: null,
+    prompt_template_name: null,
+    prompt: observation.prompt_text,
+    response: responseContent,
+    reasoning_content: reasoningContent,
+    latency_ms: latencyMs,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    input_cost: inputCost,
+    output_cost: outputCost,
+    error: errorMsg,
+    success: !errorMsg,
+    observation_id: observation.id,
+    observation_version: observation.current_version,
+  };
+  insertRow(env, bqRow).catch((err) => {
+    console.error('BigQuery insert exception:', err);
+  });
+
+  return errorMsg
+    ? { modelId, success: false, error: errorMsg }
+    : { modelId, success: true, latencyMs, response: responseContent ?? undefined };
+}
+
+// Create new observation and stream results as each model completes (requires API key)
+api.post('/observations/stream', async (c) => {
+  // Validate Bearer token
+  const authHeader = c.req.header('Authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+
+  if (!c.env.ADMIN_API_KEY) {
+    return c.json({ error: 'Server configuration error: ADMIN_API_KEY not set' }, 500);
+  }
+
+  if (!token) {
+    return c.json({ error: 'Missing API key - provide Authorization: Bearer <key> header' }, 401);
+  }
+
+  if (token !== c.env.ADMIN_API_KEY.trim()) {
+    return c.json({ error: 'Invalid API key' }, 401);
+  }
+
+  const body = await c.req.json<{
+    prompt_text: string;
+    display_name?: string;
+    model_ids: string[];
+    tag_ids?: string[];
+    word_limit?: number;
+    schedule_type?: 'daily' | 'weekly' | 'monthly' | 'custom' | null;
+    cron_expression?: string | null;
+  }>();
+
+  if (!body.prompt_text || !body.model_ids?.length) {
+    return c.json({ error: 'prompt_text and model_ids are required' }, 400);
+  }
+
+  // Check rate limit
+  const rateLimit = await checkRateLimit(c.env.DB, 'collect');
+  if (rateLimit.remaining < body.model_ids.length) {
+    return c.json({
+      error: `Would exceed daily rate limit (requested: ${body.model_ids.length}, remaining: ${rateLimit.remaining})`,
+    }, 429);
+  }
+
+  // Apply word limit if specified
+  let promptText = body.prompt_text;
+  if (body.word_limit && body.word_limit > 0) {
+    promptText = `${promptText}\n\nLimit your response to ${body.word_limit} words.`;
+  }
+
+  // Create observation first
+  const { observation } = await createObservation(c.env.DB, {
+    prompt_text: promptText,
+    display_name: body.display_name,
+    model_ids: body.model_ids,
+    tag_ids: body.tag_ids,
+    schedule_type: body.schedule_type,
+    cron_expression: body.cron_expression,
+  });
+
+  const promptId = crypto.randomUUID();
+  const collectedAt = new Date().toISOString();
+  const modelIds = body.model_ids;
+
+  // Create SSE stream
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder();
+
+      // Send observation created event first
+      const obsEvent = `data: ${JSON.stringify({ type: 'observation', observation: { id: observation.id } })}\n\n`;
+      controller.enqueue(encoder.encode(obsEvent));
+
+      // Collect all results for D1 storage
+      const allResults: Array<{ modelId: string; response?: string; error?: string; latencyMs: number; success: boolean }> = [];
+
+      // Run each model and stream results as they complete
+      const modelPromises = modelIds.map(async (modelId) => {
+        const result = await runSingleModel(
+          c.env,
+          c.env.DB,
+          { id: observation.id, prompt_text: promptText, current_version: 1 },
+          modelId,
+          promptId,
+          collectedAt
+        );
+
+        // Store for D1
+        allResults.push({
+          modelId: result.modelId,
+          response: result.response,
+          error: result.error,
+          latencyMs: result.latencyMs ?? 0,
+          success: result.success,
+        });
+
+        // Stream this result immediately
+        const resultEvent = `data: ${JSON.stringify({ type: 'result', result })}\n\n`;
+        controller.enqueue(encoder.encode(resultEvent));
+
+        return result;
+      });
+
+      // Wait for all to complete
+      await Promise.all(modelPromises);
+
+      // Store all results in D1
+      await createObservationRun(c.env.DB, observation.id, 1, allResults);
+      await updateObservationLastRunAt(c.env.DB, observation.id);
+      await incrementRateLimit(c.env.DB, 'collect', modelIds.length);
+
+      // Send done event
+      const doneEvent = `data: ${JSON.stringify({ type: 'done' })}\n\n`;
+      controller.enqueue(encoder.encode(doneEvent));
+
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
+});
+
 // Create new observation and run immediately (requires API key)
 api.post('/observations', async (c) => {
   // Validate Bearer token
