@@ -9,9 +9,13 @@ preview_urls = true
 [build]
 command = "npm run build:frontend"
 
-# Custom domain
+# Custom domains
 [[routes]]
 pattern = "observatory.emilycogsdill.com"
+custom_domain = true
+
+[[routes]]
+pattern = "llm.emilycogsdill.com"
 custom_domain = true
 
 [ai]
@@ -52,7 +56,9 @@ BQ_TABLE_ID = "raw_responses"
 # ANTHROPIC_API_KEY
 # GOOGLE_API_KEY
 # XAI_API_KEY
+# DEEPSEEK_API_KEY
 # BQ_SERVICE_ACCOUNT_EMAIL
 # BQ_PRIVATE_KEY
 # CF_ACCESS_TEAM_DOMAIN (e.g., https://your-team.cloudflareaccess.com)
 # CF_ACCESS_AUD (your application's AUD tag from Access dashboard)
+# ADMIN_API_KEY (for Bearer token auth on observation creation)
