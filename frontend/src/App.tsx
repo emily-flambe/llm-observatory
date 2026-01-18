@@ -166,37 +166,37 @@ function formatDateInTimezone(date: Date, timezone: string): string {
   }
 }
 
-function ManageCollectionCard({ collection, onUpdate }: { collection: Collection; onUpdate?: () => void }) {
+function ManageObservationCard({ observation, onUpdate }: { observation: Collection; onUpdate?: () => void }) {
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
-  const [scheduleType, setScheduleType] = useState<string>(collection.schedule_type || '');
-  const [cronExpression, setCronExpression] = useState(collection.cron_expression || '');
+  const [scheduleType, setScheduleType] = useState<string>(observation.schedule_type || '');
+  const [cronExpression, setCronExpression] = useState(observation.cron_expression || '');
   const [timezone, setTimezone] = useState(getStoredTimezone);
   const [saving, setSaving] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const lastRunDate = collection.last_run_at ? parseBigQueryTimestamp(collection.last_run_at) : null;
-  const displayName = collection.display_name || (collection.prompt_text?.slice(0, 50) + (collection.prompt_text && collection.prompt_text.length > 50 ? '...' : ''));
-  const isDisabled = collection.disabled === 1;
+  const lastRunDate = observation.last_run_at ? parseBigQueryTimestamp(observation.last_run_at) : null;
+  const displayName = observation.display_name || (observation.prompt_text?.slice(0, 50) + (observation.prompt_text && observation.prompt_text.length > 50 ? '...' : ''));
+  const isDisabled = observation.disabled === 1;
 
   let status: { label: string; color: string; icon: string };
   if (isDisabled) {
     status = { label: 'Disabled', color: 'text-ink-muted', icon: '⊘' };
-  } else if (!collection.schedule_type) {
+  } else if (!observation.schedule_type) {
     status = { label: 'Manual', color: 'text-ink-muted', icon: '○' };
-  } else if (collection.is_paused) {
+  } else if (observation.is_paused) {
     status = { label: 'Paused', color: 'text-amber', icon: '⏸' };
   } else {
     status = { label: 'Active', color: 'text-green-600', icon: '●' };
   }
 
   const formatSchedule = () => {
-    if (!collection.schedule_type) return 'No schedule';
-    if (collection.schedule_type === 'custom') return collection.cron_expression || 'Custom';
-    return collection.schedule_type.charAt(0).toUpperCase() + collection.schedule_type.slice(1);
+    if (!observation.schedule_type) return 'No schedule';
+    if (observation.schedule_type === 'custom') return observation.cron_expression || 'Custom';
+    return observation.schedule_type.charAt(0).toUpperCase() + observation.schedule_type.slice(1);
   };
 
-  const nextRun = calculateNextRun(collection.schedule_type, collection.cron_expression, collection.last_run_at, timezone);
+  const nextRun = calculateNextRun(observation.schedule_type, observation.cron_expression, observation.last_run_at, timezone);
 
   const handleSaveSchedule = async () => {
     if (!apiKey.trim()) {
@@ -208,7 +208,7 @@ function ManageCollectionCard({ collection, onUpdate }: { collection: Collection
     setError(null);
 
     try {
-      const res = await fetch(`/api/observations/${collection.id}`, {
+      const res = await fetch(`/api/observations/${observation.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -247,9 +247,9 @@ function ManageCollectionCard({ collection, onUpdate }: { collection: Collection
               {status.icon} {status.label}
             </span>
           </div>
-          <p className="text-sm text-ink-muted mt-1 line-clamp-2">{collection.prompt_text}</p>
+          <p className="text-sm text-ink-muted mt-1 line-clamp-2">{observation.prompt_text}</p>
           <div className="mt-2 flex items-center gap-3 text-xs text-ink-muted flex-wrap">
-            <span>{collection.model_count} model{collection.model_count !== 1 ? 's' : ''}</span>
+            <span>{observation.model_count} model{observation.model_count !== 1 ? 's' : ''}</span>
             <span>·</span>
             <span className="inline-flex items-center gap-1">
               {formatSchedule()}
@@ -273,7 +273,7 @@ function ManageCollectionCard({ collection, onUpdate }: { collection: Collection
                 <span>Last: {formatDateInTimezone(lastRunDate, timezone)}</span>
               </>
             )}
-            {nextRun && !collection.is_paused && (
+            {nextRun && !observation.is_paused && (
               <>
                 <span>·</span>
                 <span className="text-green-600">Next: {formatDateInTimezone(nextRun, timezone)}</span>
@@ -282,7 +282,7 @@ function ManageCollectionCard({ collection, onUpdate }: { collection: Collection
           </div>
         </div>
         <Link
-          to={`/observe/${collection.id}`}
+          to={`/observe/${observation.id}`}
           className="text-xs text-amber hover:text-amber-dark shrink-0"
         >
           View →
@@ -362,8 +362,8 @@ function ManageCollectionCard({ collection, onUpdate }: { collection: Collection
               <button
                 onClick={() => {
                   setScheduleExpanded(false);
-                  setScheduleType(collection.schedule_type || '');
-                  setCronExpression(collection.cron_expression || '');
+                  setScheduleType(observation.schedule_type || '');
+                  setCronExpression(observation.cron_expression || '');
                   setError(null);
                 }}
                 className="px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink"
@@ -379,7 +379,7 @@ function ManageCollectionCard({ collection, onUpdate }: { collection: Collection
 }
 
 function ObserveManagePage() {
-  const [collections, setCollections] = useState<Collection[]>([]);
+  const [observations, setObservations] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDisabled, setShowDisabled] = useState(false);
@@ -397,12 +397,12 @@ function ObserveManagePage() {
         return data;
       })
       .then((data) => {
-        setCollections(data.observations || []);
+        setObservations(data.observations || []);
         setError(null);
       })
       .catch((err: Error) => {
         setError(err.message);
-        setCollections([]);
+        setObservations([]);
       })
       .finally(() => setLoading(false));
   }, [showDisabled, refreshCounter]);
@@ -431,14 +431,14 @@ function ObserveManagePage() {
           <div className="text-error mb-2">Failed to load observations</div>
           <div className="text-sm text-ink-muted">{error}</div>
         </div>
-      ) : collections.length === 0 ? (
+      ) : observations.length === 0 ? (
         <div className="text-center py-20 text-ink-muted">
           No observations yet. Use the New tab to create your first observation.
         </div>
       ) : (
         <div className="space-y-4">
-          {collections.map((collection) => (
-            <ManageCollectionCard key={collection.id} collection={collection} onUpdate={refresh} />
+          {observations.map((obs) => (
+            <ManageObservationCard key={obs.id} observation={obs} onUpdate={refresh} />
           ))}
         </div>
       )}
@@ -865,7 +865,7 @@ function HistoryPromptsPage() {
 
 function ObservationDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [collection, setCollection] = useState<Collection | null>(null);
+  const [observation, setObservation] = useState<Collection | null>(null);
   const [prompts, setPrompts] = useState<PromptLabQuery[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -887,7 +887,7 @@ function ObservationDetailPage() {
         if (observationData.error) {
           throw new Error(observationData.error);
         }
-        setCollection(observationData.observation);
+        setObservation(observationData.observation);
         setPrompts(responsesData.prompts || []);
         setLoading(false);
       })
@@ -934,7 +934,7 @@ function ObservationDetailPage() {
 
   const handleRunNow = async () => {
     if (!apiKey || !id) {
-      setActionError('Please enter an API key to run collections');
+      setActionError('Please enter an API key to run observations');
       return;
     }
     setActionError(null);
@@ -956,15 +956,15 @@ function ObservationDetailPage() {
       setActionSuccess('Observation run completed successfully!');
       loadData();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to run collection');
+      setActionError(err instanceof Error ? err.message : 'Failed to run observation');
     } finally {
       setIsRunning(false);
     }
   };
 
   const handleTogglePause = async () => {
-    if (!apiKey || !id || !collection) {
-      setActionError('Please enter an API key to modify collections');
+    if (!apiKey || !id || !observation) {
+      setActionError('Please enter an API key to modify observations');
       return;
     }
     setActionError(null);
@@ -977,7 +977,7 @@ function ObservationDetailPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({ is_paused: !collection.is_paused }),
+        body: JSON.stringify({ is_paused: !observation.is_paused }),
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
@@ -985,13 +985,13 @@ function ObservationDetailPage() {
       }
       loadData();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to update collection');
+      setActionError(err instanceof Error ? err.message : 'Failed to update observation');
     }
   };
 
   const handleDisable = async () => {
     if (!apiKey || !id) {
-      setActionError('Please enter an API key to disable collections');
+      setActionError('Please enter an API key to disable observations');
       return;
     }
     setActionError(null);
@@ -1009,13 +1009,13 @@ function ObservationDetailPage() {
       loadData();
       setShowDisableConfirm(false);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to disable collection');
+      setActionError(err instanceof Error ? err.message : 'Failed to disable observation');
     }
   };
 
   const handleRestore = async () => {
     if (!apiKey || !id) {
-      setActionError('Please enter an API key to restore collections');
+      setActionError('Please enter an API key to restore observations');
       return;
     }
     setActionError(null);
@@ -1032,7 +1032,7 @@ function ObservationDetailPage() {
       }
       loadData();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to restore collection');
+      setActionError(err instanceof Error ? err.message : 'Failed to restore observation');
     }
   };
 
@@ -1058,7 +1058,7 @@ function ObservationDetailPage() {
     );
   }
 
-  if (error || !collection) {
+  if (error || !observation) {
     return (
       <div>
         <ObserveNavTabs />
@@ -1073,15 +1073,15 @@ function ObservationDetailPage() {
     );
   }
 
-  const displayName = collection.display_name || (collection.prompt_text?.slice(0, 50) + (collection.prompt_text && collection.prompt_text.length > 50 ? '...' : ''));
-  const isDisabled = collection.disabled === 1;
+  const displayName = observation.display_name || (observation.prompt_text?.slice(0, 50) + (observation.prompt_text && observation.prompt_text.length > 50 ? '...' : ''));
+  const isDisabled = observation.disabled === 1;
 
   let status: { label: string; color: string; icon: string };
   if (isDisabled) {
     status = { label: 'Disabled', color: 'text-ink-muted', icon: '⊘' };
-  } else if (!collection.schedule_type) {
+  } else if (!observation.schedule_type) {
     status = { label: 'Manual', color: 'text-ink-muted', icon: '○' };
-  } else if (collection.is_paused) {
+  } else if (observation.is_paused) {
     status = { label: 'Paused', color: 'text-amber', icon: '⏸' };
   } else {
     status = { label: 'Active', color: 'text-green-600', icon: '●' };
@@ -1105,7 +1105,7 @@ function ObservationDetailPage() {
                 {status.icon} {status.label}
               </span>
             </div>
-            <p className="text-sm text-ink-muted mt-1">{collection.prompt_text}</p>
+            <p className="text-sm text-ink-muted mt-1">{observation.prompt_text}</p>
           </div>
         </div>
       </div>
@@ -1135,27 +1135,27 @@ function ObservationDetailPage() {
               >
                 {isRunning ? 'Running...' : 'Run Now'}
               </button>
-              {collection.schedule_type && (
+              {observation.schedule_type && (
                 <button
                   onClick={handleTogglePause}
                   className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-white"
                 >
-                  {collection.is_paused ? 'Resume Schedule' : 'Pause Schedule'}
+                  {observation.is_paused ? 'Resume Schedule' : 'Pause Schedule'}
                 </button>
               )}
               <Link
-                to={`/observe/${collection.id}/edit`}
+                to={`/observe/${observation.id}/edit`}
                 className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-white"
               >
                 Edit
               </Link>
               <Link
                 to={`/observe?${new URLSearchParams({
-                  prompt: collection.prompt_text,
-                  models: (collection as CollectionDetail).models?.map((m) => m.id).join(',') || '',
-                  ...(collection.display_name ? { name: `${collection.display_name} (Copy)` } : {}),
-                  ...(collection.schedule_type ? { schedule: collection.schedule_type } : {}),
-                  ...(collection.cron_expression ? { cron: collection.cron_expression } : {}),
+                  prompt: observation.prompt_text,
+                  models: (observation as CollectionDetail).models?.map((m) => m.id).join(',') || '',
+                  ...(observation.display_name ? { name: `${observation.display_name} (Copy)` } : {}),
+                  ...(observation.schedule_type ? { schedule: observation.schedule_type } : {}),
+                  ...(observation.cron_expression ? { cron: observation.cron_expression } : {}),
                 }).toString()}`}
                 className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-white"
               >
@@ -1195,15 +1195,15 @@ function ObservationDetailPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
             <div className="text-ink-muted">Schedule</div>
-            <div className="font-medium text-ink">{formatSchedule(collection.schedule_type, collection.cron_expression)}</div>
+            <div className="font-medium text-ink">{formatSchedule(observation.schedule_type, observation.cron_expression)}</div>
           </div>
           <div>
             <div className="text-ink-muted">Last Run</div>
-            <div className="font-medium text-ink">{formatLocalTime(collection.last_run_at)}</div>
+            <div className="font-medium text-ink">{formatLocalTime(observation.last_run_at)}</div>
           </div>
           <div>
             <div className="text-ink-muted">Models</div>
-            <div className="font-medium text-ink">{collection.model_count}</div>
+            <div className="font-medium text-ink">{observation.model_count}</div>
           </div>
           <div>
             <div className="text-ink-muted">Executions</div>
