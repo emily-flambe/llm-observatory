@@ -9,41 +9,38 @@ import {
   useParams,
   Link,
 } from 'react-router-dom';
-import CollectionForm from './components/CollectionForm';
+import ObservationForm from './components/ObservationForm';
 import Landing from './pages/Landing';
-import PromptLab from './pages/PromptLab';
 import ExploreModels from './pages/ExploreModels';
 import { parseBigQueryTimestamp } from './utils/date';
 import { renderMarkdown } from './utils/markdown';
-import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection, CollectionsResponse } from './types';
+import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection, CollectionDetail } from './types';
 
-function CollectNavTabs() {
+function ObserveNavTabs() {
   const pathname = window.location.pathname;
-  // Manage tab is active for /collect/manage, /collect/edit/*, and /collect/:id (but not /collect/create)
-  const isManageActive = pathname === '/collect/manage' ||
-    pathname.startsWith('/collect/edit') ||
-    (pathname.startsWith('/collect/') && pathname !== '/collect/create' && !pathname.startsWith('/collect/edit'));
+  const isManageActive = pathname === '/observe/manage' ||
+    (pathname.startsWith('/observe/') && pathname !== '/observe' && !pathname.match(/^\/observe\/[^/]+$/));
 
   return (
     <div className="flex gap-1 mb-6 border-b border-border">
       <NavLink
-        to="/collect/create"
+        to="/observe"
+        end
         className={({ isActive }) =>
           `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
             isActive ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
           }`
         }
       >
-        Create
+        New
       </NavLink>
       <NavLink
-        to="/collect/manage"
-        end={false}
-        className={() => {
-          return `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
+        to="/observe/manage"
+        className={() =>
+          `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
             isManageActive ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
-          }`;
-        }}
+          }`
+        }
       >
         Manage
       </NavLink>
@@ -51,28 +48,28 @@ function CollectNavTabs() {
   );
 }
 
-function CollectCreatePage() {
+function ObserveNewPage() {
   return (
     <div>
-      <CollectNavTabs />
-      <CollectionForm />
+      <ObserveNavTabs />
+      <ObservationForm />
     </div>
   );
 }
 
-function CollectEditPage() {
+function ObserveEditPage() {
   const { id } = useParams<{ id: string }>();
   return (
     <div>
-      <CollectNavTabs />
-      <CollectionForm editId={id} />
+      <ObserveNavTabs />
+      <ObservationForm editId={id} />
     </div>
   );
 }
 
 function ManageCollectionCard({ collection }: { collection: Collection }) {
   const lastRunDate = collection.last_run_at ? parseBigQueryTimestamp(collection.last_run_at) : null;
-  const displayName = collection.display_name || `${collection.topic_name} - ${collection.template_name}`;
+  const displayName = collection.display_name || (collection.prompt_text?.slice(0, 50) + (collection.prompt_text && collection.prompt_text.length > 50 ? '...' : ''));
   const isDisabled = collection.disabled === 1;
 
   let status: { label: string; color: string; icon: string };
@@ -94,7 +91,7 @@ function ManageCollectionCard({ collection }: { collection: Collection }) {
 
   return (
     <Link
-      to={`/collect/${collection.id}`}
+      to={`/observe/${collection.id}`}
       className={`block bg-white border border-border rounded-lg p-4 hover:border-amber transition-colors ${isDisabled ? 'opacity-60' : ''}`}
     >
       <div className="flex items-start justify-between gap-4">
@@ -124,21 +121,21 @@ function ManageCollectionCard({ collection }: { collection: Collection }) {
   );
 }
 
-function CollectManagePage() {
+function ObserveManagePage() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDisabled, setShowDisabled] = useState(false);
 
   useEffect(() => {
-    fetch(`/api/collections?includeDisabled=${showDisabled}`)
+    fetch(`/api/observations?includeDisabled=${showDisabled}`)
       .then(async (res) => {
-        const data = (await res.json()) as { error?: string } & CollectionsResponse;
-        if (!res.ok) throw new Error(data.error || 'Failed to load collections');
+        const data = (await res.json()) as { error?: string; observations?: Collection[] };
+        if (!res.ok) throw new Error(data.error || 'Failed to load observations');
         return data;
       })
       .then((data) => {
-        setCollections(data.collections || []);
+        setCollections(data.observations || []);
         setError(null);
       })
       .catch((err: Error) => {
@@ -150,7 +147,7 @@ function CollectManagePage() {
 
   return (
     <div>
-      <CollectNavTabs />
+      <ObserveNavTabs />
 
       {/* Show disabled toggle */}
       <div className="mb-4">
@@ -161,20 +158,20 @@ function CollectManagePage() {
             onChange={(e) => setShowDisabled(e.target.checked)}
             className="rounded border-border text-amber focus:ring-amber"
           />
-          Show disabled collections
+          Show disabled observations
         </label>
       </div>
 
       {loading ? (
-        <div className="text-center py-20 text-ink-muted">Loading collections...</div>
+        <div className="text-center py-20 text-ink-muted">Loading observations...</div>
       ) : error ? (
         <div className="text-center py-20">
-          <div className="text-error mb-2">Failed to load collections</div>
+          <div className="text-error mb-2">Failed to load observations</div>
           <div className="text-sm text-ink-muted">{error}</div>
         </div>
       ) : collections.length === 0 ? (
         <div className="text-center py-20 text-ink-muted">
-          No collections yet. Use the Create tab to create your first collection.
+          No observations yet. Use the New tab to create your first observation.
         </div>
       ) : (
         <div className="space-y-4">
@@ -204,7 +201,7 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
             {expanded ? 'Collapse' : 'Expand'}
           </button>
         </div>
-        {/* Row 2: Metadata + Use Prompt */}
+        {/* Row 2: Metadata + Manage */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 text-xs text-ink-muted">
             <span>{date.toLocaleDateString()}</span>
@@ -213,10 +210,10 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
             </span>
           </div>
           <Link
-            to={`/prompt-lab?prompt=${encodeURIComponent(query.prompt)}&models=${query.responses.map((r) => r.model).join(',')}`}
+            to={`/observe?prompt=${encodeURIComponent(query.prompt)}`}
             className="text-xs text-amber hover:text-amber-dark"
           >
-            Use Prompt
+            Manage
           </Link>
         </div>
       </div>
@@ -255,18 +252,18 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
   );
 }
 
-function BrowseNav() {
+function HistoryNav() {
   return (
     <div className="flex gap-1 mb-6 border-b border-border">
       <NavLink
-        to="/browse/prompts"
+        to="/history/prompts"
         className={({ isActive }) =>
           `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
             isActive ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
           }`
         }
       >
-        Prompt History
+        Prompts
       </NavLink>
     </div>
   );
@@ -525,7 +522,7 @@ function PromptsContent({
         <div className="text-center py-20 text-ink-muted">
           {hasActiveFilters || filters.search
             ? 'No prompts match the current filters'
-            : 'No prompts yet. Use the Prompt Lab to submit prompts.'}
+            : 'No prompts yet. Use the Observe page to run prompts.'}
         </div>
       ) : (
         <div className="space-y-4">
@@ -538,7 +535,7 @@ function PromptsContent({
   );
 }
 
-function BrowsePromptsPage() {
+function HistoryPromptsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [models, setModels] = useState<Model[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -592,7 +589,7 @@ function BrowsePromptsPage() {
 
   return (
     <div>
-      <BrowseNav />
+      <HistoryNav />
       <PromptsContent
         key={filterKey}
         filters={filters}
@@ -604,7 +601,7 @@ function BrowsePromptsPage() {
   );
 }
 
-function CollectionDetailPage() {
+function ObservationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [collection, setCollection] = useState<Collection | null>(null);
   const [prompts, setPrompts] = useState<PromptLabQuery[]>([]);
@@ -621,14 +618,14 @@ function CollectionDetailPage() {
     if (!id) return;
 
     Promise.all([
-      fetch(`/api/collections/${id}`).then((res) => res.json()) as Promise<{ error?: string; collection: Collection }>,
-      fetch(`/api/collections/${id}/responses`).then((res) => res.json()) as Promise<PromptsResponse & { error?: string }>,
+      fetch(`/api/observations/${id}`).then((res) => res.json()) as Promise<{ error?: string; observation: Collection }>,
+      fetch(`/api/observations/${id}/responses`).then((res) => res.json()) as Promise<PromptsResponse & { error?: string }>,
     ])
-      .then(([collectionData, responsesData]) => {
-        if (collectionData.error) {
-          throw new Error(collectionData.error);
+      .then(([observationData, responsesData]) => {
+        if (observationData.error) {
+          throw new Error(observationData.error);
         }
-        setCollection(collectionData.collection);
+        setCollection(observationData.observation);
         setPrompts(responsesData.prompts || []);
         setLoading(false);
       })
@@ -683,7 +680,7 @@ function CollectionDetailPage() {
     setIsRunning(true);
 
     try {
-      const res = await fetch(`/api/admin/collections/${id}/run`, {
+      const res = await fetch(`/api/admin/observations/${id}/run`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -692,9 +689,9 @@ function CollectionDetailPage() {
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to run collection');
+        throw new Error(data.error || 'Failed to run observation');
       }
-      setActionSuccess('Collection run completed successfully!');
+      setActionSuccess('Observation run completed successfully!');
       loadData();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to run collection');
@@ -712,7 +709,7 @@ function CollectionDetailPage() {
     setActionSuccess(null);
 
     try {
-      const res = await fetch(`/api/collections/${id}`, {
+      const res = await fetch(`/api/observations/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -722,7 +719,7 @@ function CollectionDetailPage() {
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to update collection');
+        throw new Error(data.error || 'Failed to update observation');
       }
       loadData();
     } catch (err) {
@@ -739,13 +736,13 @@ function CollectionDetailPage() {
     setActionSuccess(null);
 
     try {
-      const res = await fetch(`/api/collections/${id}`, {
+      const res = await fetch(`/api/observations/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${apiKey}` },
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to disable collection');
+        throw new Error(data.error || 'Failed to disable observation');
       }
       loadData();
       setShowDisableConfirm(false);
@@ -763,13 +760,13 @@ function CollectionDetailPage() {
     setActionSuccess(null);
 
     try {
-      const res = await fetch(`/api/collections/${id}/restore`, {
+      const res = await fetch(`/api/observations/${id}/restore`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${apiKey}` },
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to restore collection');
+        throw new Error(data.error || 'Failed to restore observation');
       }
       loadData();
     } catch (err) {
@@ -793,8 +790,8 @@ function CollectionDetailPage() {
   if (loading) {
     return (
       <div>
-        <CollectNavTabs />
-        <div className="text-center py-20 text-ink-muted">Loading collection...</div>
+        <ObserveNavTabs />
+        <div className="text-center py-20 text-ink-muted">Loading observation...</div>
       </div>
     );
   }
@@ -802,11 +799,11 @@ function CollectionDetailPage() {
   if (error || !collection) {
     return (
       <div>
-        <CollectNavTabs />
+        <ObserveNavTabs />
         <div className="text-center py-20">
-          <div className="text-error mb-2">Failed to load collection</div>
+          <div className="text-error mb-2">Failed to load observation</div>
           <div className="text-sm text-ink-muted">{error}</div>
-          <Link to="/collect/manage" className="text-amber hover:text-amber-dark text-sm mt-4 inline-block">
+          <Link to="/observe/manage" className="text-amber hover:text-amber-dark text-sm mt-4 inline-block">
             ← Back to Manage
           </Link>
         </div>
@@ -814,7 +811,7 @@ function CollectionDetailPage() {
     );
   }
 
-  const displayName = collection.display_name || `${collection.topic_name} - ${collection.template_name}`;
+  const displayName = collection.display_name || (collection.prompt_text?.slice(0, 50) + (collection.prompt_text && collection.prompt_text.length > 50 ? '...' : ''));
   const isDisabled = collection.disabled === 1;
 
   let status: { label: string; color: string; icon: string };
@@ -830,10 +827,10 @@ function CollectionDetailPage() {
 
   return (
     <div>
-      <CollectNavTabs />
+      <ObserveNavTabs />
 
       <div className="mb-6">
-        <Link to="/collect/manage" className="text-sm text-amber hover:text-amber-dark mb-2 inline-block">
+        <Link to="/observe/manage" className="text-sm text-amber hover:text-amber-dark mb-2 inline-block">
           ← Back to Manage
         </Link>
         <div className="flex items-start justify-between gap-4">
@@ -885,10 +882,22 @@ function CollectionDetailPage() {
                 </button>
               )}
               <Link
-                to={`/collect/edit/${collection.id}`}
+                to={`/observe/${collection.id}/edit`}
                 className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-white"
               >
                 Edit
+              </Link>
+              <Link
+                to={`/observe?${new URLSearchParams({
+                  prompt: collection.prompt_text,
+                  models: (collection as CollectionDetail).models?.map((m) => m.id).join(',') || '',
+                  ...(collection.display_name ? { name: `${collection.display_name} (Copy)` } : {}),
+                  ...(collection.schedule_type ? { schedule: collection.schedule_type } : {}),
+                  ...(collection.cron_expression ? { cron: collection.cron_expression } : {}),
+                }).toString()}`}
+                className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-white"
+              >
+                Duplicate
               </Link>
               {!showDisableConfirm ? (
                 <button
@@ -1030,18 +1039,6 @@ function Layout({ children }: { children: React.ReactNode }) {
                 Home
               </NavLink>
               <NavLink
-                to="/prompt-lab"
-                className={({ isActive }) =>
-                  `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
-                    isActive
-                      ? 'bg-amber text-white'
-                      : 'bg-white text-ink-light hover:bg-paper-dark'
-                  }`
-                }
-              >
-                Prompt Lab
-              </NavLink>
-              <NavLink
                 to="/models"
                 className={({ isActive }) =>
                   `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
@@ -1054,7 +1051,7 @@ function Layout({ children }: { children: React.ReactNode }) {
                 Models
               </NavLink>
               <NavLink
-                to="/collect"
+                to="/observe"
                 className={({ isActive }) =>
                   `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
                     isActive
@@ -1066,18 +1063,18 @@ function Layout({ children }: { children: React.ReactNode }) {
                 Observe
               </NavLink>
               <NavLink
-                to="/browse"
+                to="/history"
                 className={({ isActive }) => {
-                  // Also highlight if we're on any /browse/* route
-                  const isBrowseRoute = window.location.pathname.startsWith('/browse');
+                  // Also highlight if we're on any /history/* route
+                  const isHistoryRoute = window.location.pathname.startsWith('/history');
                   return `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
-                    isActive || isBrowseRoute
+                    isActive || isHistoryRoute
                       ? 'bg-amber text-white'
                       : 'bg-white text-ink-light hover:bg-paper-dark'
                   }`;
                 }}
               >
-                Browse
+                History
               </NavLink>
             </nav>
             <a
@@ -1112,17 +1109,15 @@ export default function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<Landing />} />
-          <Route path="/prompt-lab" element={<PromptLab />} />
           <Route path="/models" element={<ExploreModels />} />
-          {/* Collect routes */}
-          <Route path="/collect" element={<Navigate to="/collect/create" replace />} />
-          <Route path="/collect/create" element={<CollectCreatePage />} />
-          <Route path="/collect/manage" element={<CollectManagePage />} />
-          <Route path="/collect/edit/:id" element={<CollectEditPage />} />
-          <Route path="/collect/:id" element={<CollectionDetailPage />} />
-          {/* Browse routes */}
-          <Route path="/browse" element={<Navigate to="/browse/prompts" replace />} />
-          <Route path="/browse/prompts" element={<BrowsePromptsPage />} />
+          {/* Observe routes */}
+          <Route path="/observe" element={<ObserveNewPage />} />
+          <Route path="/observe/manage" element={<ObserveManagePage />} />
+          <Route path="/observe/:id" element={<ObservationDetailPage />} />
+          <Route path="/observe/:id/edit" element={<ObserveEditPage />} />
+          {/* History routes */}
+          <Route path="/history" element={<Navigate to="/history/prompts" replace />} />
+          <Route path="/history/prompts" element={<HistoryPromptsPage />} />
         </Routes>
       </Layout>
     </BrowserRouter>

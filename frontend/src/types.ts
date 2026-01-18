@@ -126,6 +126,14 @@ export interface PromptsResponse {
   prompts: PromptLabQuery[];
 }
 
+// Tag types
+export interface Tag {
+  id: string;
+  name: string;
+  color: string | null;
+  created_at: string;
+}
+
 // Collection types
 export interface Collection {
   id: string;

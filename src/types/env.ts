@@ -21,4 +21,7 @@ export interface Env {
   // Cloudflare Access Config
   CF_ACCESS_TEAM_DOMAIN: string;
   CF_ACCESS_AUD: string;
+
+  // Admin API Key (for Bearer token auth on protected routes)
+  ADMIN_API_KEY: string;
 }

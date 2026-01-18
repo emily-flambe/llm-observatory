@@ -46,7 +46,7 @@ npx wrangler d1 execute llm-observatory-db --local --command "..."
 npx wrangler d1 execute llm-observatory-db --remote --command "..."
 ```
 
-For BigQuery queries/updates, use the `bq` CLI directly - don't ask the user to run them.
+**BigQuery schema changes:** The service account in `.dev.vars` only has streaming insert permissions (bigquery.tables.insertdata), NOT schema modification permissions. For ALTER TABLE or other DDL operations, ask the user to run the command via BigQuery Console or with their own credentials. Provide the exact SQL.
 
 ## Adding LLM Providers
 

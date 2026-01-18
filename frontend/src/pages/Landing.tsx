@@ -171,12 +171,12 @@ export default function Landing() {
       {/* Features */}
       <section className="grid gap-4 sm:grid-cols-3">
         <Link
-          to="/prompt-lab"
+          to="/models"
           className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
         >
-          <h3 className="font-semibold text-ink mb-2">Prompt Lab</h3>
+          <h3 className="font-semibold text-ink mb-2">Models</h3>
           <p className="text-sm text-ink-muted">
-            Send any prompt to multiple models at once and compare their responses side-by-side.
+            Explore supported LLM providers, model capabilities, and release dates.
           </p>
         </Link>
         <Link
@@ -185,17 +185,16 @@ export default function Landing() {
         >
           <h3 className="font-semibold text-ink mb-2">Observe</h3>
           <p className="text-sm text-ink-muted">
-            Gather structured responses on predefined topics using prompt templates. Data is stored
-            for later analysis.
+            Run prompts across models, save observations, schedule recurring runs.
           </p>
         </Link>
         <Link
-          to="/browse"
+          to="/history"
           className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
         >
-          <h3 className="font-semibold text-ink mb-2">Browse</h3>
+          <h3 className="font-semibold text-ink mb-2">History</h3>
           <p className="text-sm text-ink-muted">
-            View and compare collected responses across models for each topic.
+            View and compare collected responses across models.
           </p>
         </Link>
       </section>
