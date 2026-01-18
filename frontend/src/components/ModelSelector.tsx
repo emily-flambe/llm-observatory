@@ -344,7 +344,17 @@ export default function ModelSelector({
                           className="sr-only"
                         />
                         <div className="min-w-0">
-                          <div className="text-sm text-ink">{model.display_name}</div>
+                          <div className="text-sm text-ink flex items-center gap-1.5">
+                            {model.display_name}
+                            {model.grounded === 1 && (
+                              <span
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700"
+                                title="Uses web search for real-time information"
+                              >
+                                Web
+                              </span>
+                            )}
+                          </div>
                           <div className="text-xs text-ink-muted font-mono truncate">
                             {model.model_name}
                           </div>

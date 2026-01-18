@@ -1,10 +1,17 @@
-import type { LLMProvider, LLMRequest, LLMResponse } from './types';
+import type { LLMProvider, LLMRequest, LLMResponse, Citation } from './types';
 import { LLMError } from './types';
+
+interface OpenAIAnnotation {
+  type: string;
+  url?: string;
+  title?: string;
+}
 
 interface OpenAIChatResponse {
   choices: Array<{
     message: {
       content: string;
+      annotations?: OpenAIAnnotation[];
     };
   }>;
   usage: {
@@ -17,7 +24,8 @@ export class OpenAIProvider implements LLMProvider {
   constructor(
     public readonly id: string,
     private readonly modelName: string,
-    private readonly apiKey: string
+    private readonly apiKey: string,
+    private readonly grounded: boolean = false
   ) {}
 
   async complete(request: LLMRequest): Promise<LLMResponse> {
@@ -30,7 +38,25 @@ export class OpenAIProvider implements LLMProvider {
       this.modelName.startsWith('o3') ||
       this.modelName.startsWith('gpt-5');
 
+    // Search-preview models don't support temperature
+    const isSearchModel = this.modelName.includes('search');
+
     const startTime = Date.now();
+
+    // Build request body
+    const requestBody: Record<string, unknown> = {
+      model: this.modelName,
+      messages: [{ role: 'user', content: request.prompt }],
+      ...(usesCompletionTokens
+        ? { max_completion_tokens: maxTokens }
+        : { max_tokens: maxTokens }),
+      ...(!isSearchModel && { temperature }),
+    };
+
+    // Add web search options for grounded models
+    if (this.grounded) {
+      requestBody.web_search_options = { search_context_size: 'medium' };
+    }
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -38,14 +64,7 @@ export class OpenAIProvider implements LLMProvider {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.apiKey}`,
       },
-      body: JSON.stringify({
-        model: this.modelName,
-        messages: [{ role: 'user', content: request.prompt }],
-        ...(usesCompletionTokens
-          ? { max_completion_tokens: maxTokens }
-          : { max_tokens: maxTokens }),
-        temperature,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     const latencyMs = Date.now() - startTime;
@@ -65,11 +84,26 @@ export class OpenAIProvider implements LLMProvider {
       throw new LLMError('OpenAI returned empty response', 'openai');
     }
 
+    // Extract citations from annotations
+    const citations: Citation[] = [];
+    const annotations = data.choices[0].message.annotations;
+    if (annotations) {
+      for (const annotation of annotations) {
+        if (annotation.type === 'url_citation' && annotation.url) {
+          citations.push({
+            url: annotation.url,
+            title: annotation.title,
+          });
+        }
+      }
+    }
+
     return {
       content: data.choices[0].message.content,
       inputTokens: data.usage.prompt_tokens,
       outputTokens: data.usage.completion_tokens,
       latencyMs,
+      ...(citations.length > 0 && { citations }),
     };
   }
 }

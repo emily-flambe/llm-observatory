@@ -4,12 +4,19 @@ export interface LLMRequest {
   temperature?: number;
 }
 
+export interface Citation {
+  url: string;
+  title?: string;
+}
+
 export interface LLMResponse {
   content: string;
   reasoningContent?: string;
   inputTokens: number;
   outputTokens: number;
   latencyMs: number;
+  citations?: Citation[];
+  searchQueries?: string[];
 }
 
 export interface LLMProvider {
