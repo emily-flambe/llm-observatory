@@ -37,8 +37,8 @@ gh pr create --fill  # Creates draft PR for review
 
 ## Database
 
-- **D1**: Config (topics, models, prompt_templates)
-- **BigQuery**: Response data
+- **D1**: Config (observations, models, tags, observation_runs)
+- **BigQuery**: Response data (prompt history)
 
 Apply D1 schema changes to both local and remote:
 ```bash
@@ -46,7 +46,7 @@ npx wrangler d1 execute llm-observatory-db --local --command "..."
 npx wrangler d1 execute llm-observatory-db --remote --command "..."
 ```
 
-**BigQuery schema changes:** The service account in `.dev.vars` only has streaming insert permissions (bigquery.tables.insertdata), NOT schema modification permissions. For ALTER TABLE or other DDL operations, ask the user to run the command via BigQuery Console or with their own credentials. Provide the exact SQL.
+**BigQuery:** The service account has full BigQuery permissions including delete. Use `DELETE /api/admin/prompts?search=<term>` to delete prompt history.
 
 ## Adding LLM Providers
 
