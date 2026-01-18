@@ -30,6 +30,7 @@ import {
   getRecentPrompts,
   getCollectionResponses,
   insertRow,
+  deleteRowsBySearch,
   extractProductFamily,
   extractCompany,
   type BigQueryRow,
@@ -1218,6 +1219,21 @@ admin.post('/sync-models', async (c) => {
 admin.post('/sync-basellm', async (c) => {
   const result = await syncBasellmMetadata(c.env);
   return c.json({ result });
+});
+
+// Delete prompt history by search term
+admin.delete('/prompts', async (c) => {
+  const search = c.req.query('search');
+  if (!search) {
+    return c.json({ error: 'search query parameter is required' }, 400);
+  }
+
+  const result = await deleteRowsBySearch(c.env, search);
+  if (!result.success) {
+    return c.json({ error: result.error }, 500);
+  }
+
+  return c.json({ success: true, deletedRows: result.data.deletedRows });
 });
 
 // Get recent sync logs
