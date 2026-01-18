@@ -465,11 +465,11 @@ function PromptsContent({
           <label className="flex items-center gap-1.5 text-sm text-ink cursor-pointer">
             <input
               type="checkbox"
-              checked={filters.sources.includes('collection')}
-              onChange={() => toggleSource('collection')}
+              checked={filters.sources.includes('observation')}
+              onChange={() => toggleSource('observation')}
               className="rounded border-border text-amber focus:ring-amber"
             />
-            Collections
+            Observations
           </label>
           <label className="flex items-center gap-1.5 text-sm text-ink cursor-pointer">
             <input
@@ -484,7 +484,7 @@ function PromptsContent({
 
         {hasActiveFilters && (
           <button
-            onClick={() => onFilterChange({ models: [], companies: [], topics: [], sources: ['collection', 'prompt-lab'] })}
+            onClick={() => onFilterChange({ models: [], companies: [], topics: [], sources: ['observation', 'prompt-lab'] })}
             className="px-3 py-2 text-sm text-ink-muted hover:text-ink"
           >
             Clear filters
@@ -557,9 +557,9 @@ function HistoryPromptsPage() {
 
   // Parse sources from URL, default to both checked (show all)
   const parseSources = (param: string | null): string[] => {
-    if (param === null) return ['collection', 'prompt-lab']; // Default: both checked
+    if (param === null) return ['observation', 'prompt-lab']; // Default: both checked
     const sources = param.split(',').filter(Boolean);
-    return sources.length > 0 ? sources : ['collection', 'prompt-lab'];
+    return sources.length > 0 ? sources : ['observation', 'prompt-lab'];
   };
 
   const filters: FilterParams = {
