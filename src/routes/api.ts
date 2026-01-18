@@ -903,7 +903,7 @@ api.get('/observations/:id/responses', async (c) => {
 
   // Transform to match expected format
   const prompts = runs.map((run) => ({
-    group_id: run.id,
+    id: run.id,
     prompt: observation.prompt_text,
     collected_at: run.run_at,
     source: 'observation',
