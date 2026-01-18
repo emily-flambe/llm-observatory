@@ -163,7 +163,7 @@ export default function Landing() {
       {/* Welcome */}
       <section>
         <p className="text-ink-light text-lg leading-relaxed">
-          Compare how different AI models respond to the same prompts. Collect structured responses
+          Compare how different AI models respond to the same prompts. Observe structured responses
           on specific topics, or test freeform prompts across multiple models simultaneously.
         </p>
       </section>
@@ -180,10 +180,10 @@ export default function Landing() {
           </p>
         </Link>
         <Link
-          to="/collect"
+          to="/observe"
           className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
         >
-          <h3 className="font-semibold text-ink mb-2">Collect</h3>
+          <h3 className="font-semibold text-ink mb-2">Observe</h3>
           <p className="text-sm text-ink-muted">
             Gather structured responses on predefined topics using prompt templates. Data is stored
             for later analysis.
