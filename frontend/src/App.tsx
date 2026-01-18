@@ -1019,9 +1019,12 @@ function Layout({ children }: { children: React.ReactNode }) {
         <div className="max-w-4xl mx-auto px-6 py-5">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-ink">LLM Observatory</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-semibold tracking-tight text-ink">LLM Observatory</h1>
+                <img src="/bee.png" alt="Pesky bee" className="w-8 h-8" />
+              </div>
               <p className="text-sm text-ink-muted mt-0.5">
-                Compare what different AI models say about topics
+                Release the swarm (for science)
               </p>
             </div>
             <nav className="flex border border-border rounded-lg overflow-hidden">
