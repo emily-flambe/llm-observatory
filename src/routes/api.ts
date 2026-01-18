@@ -106,7 +106,8 @@ async function runCollectionInternal(
     let outputTokens = 0;
 
     try {
-      const provider = createLLMProvider(model.id, model.provider, model.model_name, env);
+      const grounded = model.grounded === 1;
+      const provider = createLLMProvider(model.id, model.provider, model.model_name, env, grounded);
       const start = Date.now();
       const response = await provider.complete({ prompt: collection.prompt_text });
       latencyMs = Date.now() - start;
@@ -956,7 +957,8 @@ admin.get('/test-models', async (c) => {
   for (const model of models) {
     const start = Date.now();
     try {
-      const provider = createLLMProvider(model.id, model.provider, model.model_name, c.env);
+      const grounded = model.grounded === 1;
+      const provider = createLLMProvider(model.id, model.provider, model.model_name, c.env, grounded);
       await provider.complete({ prompt: testPrompt, maxTokens: 10 });
       results.push({
         modelId: model.id,
@@ -1236,7 +1238,8 @@ admin.post('/prompt', async (c) => {
     let outputTokens = 0;
 
     try {
-      const provider = createLLMProvider(model.id, model.provider, model.model_name, c.env);
+      const grounded = model.grounded === 1;
+      const provider = createLLMProvider(model.id, model.provider, model.model_name, c.env, grounded);
       const start = Date.now();
       const response = await provider.complete({ prompt: body.prompt });
       latencyMs = Date.now() - start;

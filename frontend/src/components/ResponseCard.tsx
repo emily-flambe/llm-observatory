@@ -65,6 +65,29 @@ export default function ResponseCard({ response }: ResponseCardProps) {
         </button>
       )}
 
+      {response.citations && response.citations.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-border">
+          <div className="text-xs font-medium text-ink-muted mb-2">Sources</div>
+          <div className="flex flex-wrap gap-2">
+            {response.citations.map((citation, idx) => (
+              <a
+                key={idx}
+                href={citation.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100 truncate max-w-[200px]"
+                title={citation.title || citation.url}
+              >
+                <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                <span className="truncate">{citation.title || new URL(citation.url).hostname}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-4 mt-4 pt-3 border-t border-border text-xs text-ink-muted">
         <span>{formatDate(response.collected_at)}</span>
         {response.input_tokens > 0 && (

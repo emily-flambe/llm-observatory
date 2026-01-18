@@ -43,6 +43,7 @@ export interface Model {
   open_weights: number | null; // 0/1 boolean
   input_modalities: string | null; // JSON array as string
   output_modalities: string | null; // JSON array as string
+  grounded: number | null; // 0/1 boolean - whether model uses web search
   created_at: string;
   updated_at: string;
 }

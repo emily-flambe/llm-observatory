@@ -166,7 +166,8 @@ async function runCollection(
     let outputTokens = 0;
 
     try {
-      const provider = createLLMProvider(model.id, model.provider, model.model_name, env);
+      const grounded = model.grounded === 1;
+      const provider = createLLMProvider(model.id, model.provider, model.model_name, env, grounded);
       const start = Date.now();
       const response = await provider.complete({ prompt: collection.prompt_text });
       latencyMs = Date.now() - start;

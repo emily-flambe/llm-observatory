@@ -35,6 +35,12 @@ export interface Model {
   open_weights: number | null; // 0/1 boolean
   input_modalities: string | null; // JSON array as string
   output_modalities: string | null; // JSON array as string
+  grounded: number | null; // 0/1 boolean - whether model uses web search
+}
+
+export interface Citation {
+  url: string;
+  title?: string;
 }
 
 export interface Response {
@@ -56,6 +62,7 @@ export interface Response {
   output_cost: number | null;
   error: string | null;
   success: boolean;
+  citations?: Citation[];
 }
 
 // API response types
