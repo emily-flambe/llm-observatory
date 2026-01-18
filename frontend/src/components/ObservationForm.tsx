@@ -414,7 +414,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
             <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-success text-sm flex items-center justify-between">
               <span>Observation updated successfully.</span>
               <Link
-                to={`/collect/${createdObservationId}`}
+                to={`/observe/${createdObservationId}`}
                 className="text-amber hover:text-amber-light font-medium"
               >
                 View Observation &rarr;
@@ -664,7 +664,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
             <h3 className="text-lg font-medium text-ink">Results</h3>
             {createdObservationId && (
               <Link
-                to={`/collect/${createdObservationId}`}
+                to={`/observe/${createdObservationId}`}
                 className="text-sm text-amber hover:text-amber-light"
               >
                 View Full Details &rarr;
@@ -684,7 +684,8 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
 
 function ResultCard({ result }: { result: ModelResult }) {
   const [elapsed, setElapsed] = useState(0);
-  const [expanded, setExpanded] = useState(false);
+  // Auto-expand when result completes successfully with a response
+  const [expanded, setExpanded] = useState(result.status === 'success' && !!result.response);
 
   // Update elapsed time while loading
   useEffect(() => {
@@ -698,6 +699,13 @@ function ResultCard({ result }: { result: ModelResult }) {
 
     return () => clearInterval(interval);
   }, [result.status, result.startTime]);
+
+  // Auto-expand when result transitions to success with response
+  useEffect(() => {
+    if (result.status === 'success' && result.response) {
+      setExpanded(true);
+    }
+  }, [result.status, result.response]);
 
   // Note: renderMarkdown sanitizes HTML by escaping < and > before processing
   // This follows the same pattern used in PromptLab.tsx and CollectionForm.tsx

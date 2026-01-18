@@ -169,7 +169,7 @@ export default function Landing() {
       </section>
 
       {/* Features */}
-      <section className="grid gap-4 sm:grid-cols-2">
+      <section className="grid gap-4 sm:grid-cols-3">
         <Link
           to="/observe"
           className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
@@ -180,12 +180,21 @@ export default function Landing() {
           </p>
         </Link>
         <Link
-          to="/browse"
+          to="/models"
           className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
         >
-          <h3 className="font-semibold text-ink mb-2">Browse</h3>
+          <h3 className="font-semibold text-ink mb-2">Models</h3>
           <p className="text-sm text-ink-muted">
-            View and compare collected responses across models for each topic.
+            Explore supported LLM providers, model capabilities, and release dates.
+          </p>
+        </Link>
+        <Link
+          to="/history"
+          className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
+        >
+          <h3 className="font-semibold text-ink mb-2">History</h3>
+          <p className="text-sm text-ink-muted">
+            View and compare collected responses across models.
           </p>
         </Link>
       </section>

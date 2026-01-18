@@ -16,15 +16,15 @@ import { parseBigQueryTimestamp } from './utils/date';
 import { renderMarkdown } from './utils/markdown';
 import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection } from './types';
 
-function CollectNavTabs() {
+function ObserveNavTabs() {
   const pathname = window.location.pathname;
-  const isManageActive = pathname === '/collect/manage' ||
-    (pathname.startsWith('/collect/') && pathname !== '/collect' && !pathname.match(/^\/collect\/[^/]+$/));
+  const isManageActive = pathname === '/observe/manage' ||
+    (pathname.startsWith('/observe/') && pathname !== '/observe' && !pathname.match(/^\/observe\/[^/]+$/));
 
   return (
     <div className="flex gap-1 mb-6 border-b border-border">
       <NavLink
-        to="/collect"
+        to="/observe"
         end
         className={({ isActive }) =>
           `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
@@ -35,7 +35,7 @@ function CollectNavTabs() {
         New
       </NavLink>
       <NavLink
-        to="/collect/manage"
+        to="/observe/manage"
         className={() =>
           `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
             isManageActive ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
@@ -48,11 +48,21 @@ function CollectNavTabs() {
   );
 }
 
-function CollectNewPage() {
+function ObserveNewPage() {
   return (
     <div>
-      <CollectNavTabs />
+      <ObserveNavTabs />
       <ObservationForm />
+    </div>
+  );
+}
+
+function ObserveEditPage() {
+  const { id } = useParams<{ id: string }>();
+  return (
+    <div>
+      <ObserveNavTabs />
+      <ObservationForm editId={id} />
     </div>
   );
 }
@@ -81,7 +91,7 @@ function ManageCollectionCard({ collection }: { collection: Collection }) {
 
   return (
     <Link
-      to={`/collect/${collection.id}`}
+      to={`/observe/${collection.id}`}
       className={`block bg-white border border-border rounded-lg p-4 hover:border-amber transition-colors ${isDisabled ? 'opacity-60' : ''}`}
     >
       <div className="flex items-start justify-between gap-4">
@@ -111,7 +121,7 @@ function ManageCollectionCard({ collection }: { collection: Collection }) {
   );
 }
 
-function CollectManagePage() {
+function ObserveManagePage() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -137,7 +147,7 @@ function CollectManagePage() {
 
   return (
     <div>
-      <CollectNavTabs />
+      <ObserveNavTabs />
 
       {/* Show disabled toggle */}
       <div className="mb-4">
@@ -200,7 +210,7 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
             </span>
           </div>
           <Link
-            to={`/collect?prompt=${encodeURIComponent(query.prompt)}`}
+            to={`/observe?prompt=${encodeURIComponent(query.prompt)}`}
             className="text-xs text-amber hover:text-amber-dark"
           >
             Use Prompt
@@ -242,18 +252,18 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
   );
 }
 
-function BrowseNav() {
+function HistoryNav() {
   return (
     <div className="flex gap-1 mb-6 border-b border-border">
       <NavLink
-        to="/browse/prompts"
+        to="/history/prompts"
         className={({ isActive }) =>
           `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
             isActive ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
           }`
         }
       >
-        Prompt History
+        Prompts
       </NavLink>
     </div>
   );
@@ -512,7 +522,7 @@ function PromptsContent({
         <div className="text-center py-20 text-ink-muted">
           {hasActiveFilters || filters.search
             ? 'No prompts match the current filters'
-            : 'No prompts yet. Use the Collect page to run prompts.'}
+            : 'No prompts yet. Use the Observe page to run prompts.'}
         </div>
       ) : (
         <div className="space-y-4">
@@ -525,7 +535,7 @@ function PromptsContent({
   );
 }
 
-function BrowsePromptsPage() {
+function HistoryPromptsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [models, setModels] = useState<Model[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -579,7 +589,7 @@ function BrowsePromptsPage() {
 
   return (
     <div>
-      <BrowseNav />
+      <HistoryNav />
       <PromptsContent
         key={filterKey}
         filters={filters}
@@ -591,7 +601,7 @@ function BrowsePromptsPage() {
   );
 }
 
-function CollectionDetailPage() {
+function ObservationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [collection, setCollection] = useState<Collection | null>(null);
   const [prompts, setPrompts] = useState<PromptLabQuery[]>([]);
@@ -780,8 +790,8 @@ function CollectionDetailPage() {
   if (loading) {
     return (
       <div>
-        <CollectNavTabs />
-        <div className="text-center py-20 text-ink-muted">Loading collection...</div>
+        <ObserveNavTabs />
+        <div className="text-center py-20 text-ink-muted">Loading observation...</div>
       </div>
     );
   }
@@ -789,11 +799,11 @@ function CollectionDetailPage() {
   if (error || !collection) {
     return (
       <div>
-        <CollectNavTabs />
+        <ObserveNavTabs />
         <div className="text-center py-20">
-          <div className="text-error mb-2">Failed to load collection</div>
+          <div className="text-error mb-2">Failed to load observation</div>
           <div className="text-sm text-ink-muted">{error}</div>
-          <Link to="/collect/manage" className="text-amber hover:text-amber-dark text-sm mt-4 inline-block">
+          <Link to="/observe/manage" className="text-amber hover:text-amber-dark text-sm mt-4 inline-block">
             ← Back to Manage
           </Link>
         </div>
@@ -817,10 +827,10 @@ function CollectionDetailPage() {
 
   return (
     <div>
-      <CollectNavTabs />
+      <ObserveNavTabs />
 
       <div className="mb-6">
-        <Link to="/collect/manage" className="text-sm text-amber hover:text-amber-dark mb-2 inline-block">
+        <Link to="/observe/manage" className="text-sm text-amber hover:text-amber-dark mb-2 inline-block">
           ← Back to Manage
         </Link>
         <div className="flex items-start justify-between gap-4">
@@ -872,7 +882,7 @@ function CollectionDetailPage() {
                 </button>
               )}
               <Link
-                to={`/collect/${collection.id}`}
+                to={`/observe/${collection.id}/edit`}
                 className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-white"
               >
                 Edit
@@ -1029,7 +1039,7 @@ function Layout({ children }: { children: React.ReactNode }) {
                 Models
               </NavLink>
               <NavLink
-                to="/collect"
+                to="/observe"
                 className={({ isActive }) =>
                   `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
                     isActive
@@ -1041,18 +1051,18 @@ function Layout({ children }: { children: React.ReactNode }) {
                 Observe
               </NavLink>
               <NavLink
-                to="/browse"
+                to="/history"
                 className={({ isActive }) => {
-                  // Also highlight if we're on any /browse/* route
-                  const isBrowseRoute = window.location.pathname.startsWith('/browse');
+                  // Also highlight if we're on any /history/* route
+                  const isHistoryRoute = window.location.pathname.startsWith('/history');
                   return `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
-                    isActive || isBrowseRoute
+                    isActive || isHistoryRoute
                       ? 'bg-amber text-white'
                       : 'bg-white text-ink-light hover:bg-paper-dark'
                   }`;
                 }}
               >
-                Browse
+                History
               </NavLink>
             </nav>
             <a
@@ -1088,13 +1098,14 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/models" element={<ExploreModels />} />
-          {/* Collect routes */}
-          <Route path="/collect" element={<CollectNewPage />} />
-          <Route path="/collect/manage" element={<CollectManagePage />} />
-          <Route path="/collect/:id" element={<CollectionDetailPage />} />
-          {/* Browse routes */}
-          <Route path="/browse" element={<Navigate to="/browse/prompts" replace />} />
-          <Route path="/browse/prompts" element={<BrowsePromptsPage />} />
+          {/* Observe routes */}
+          <Route path="/observe" element={<ObserveNewPage />} />
+          <Route path="/observe/manage" element={<ObserveManagePage />} />
+          <Route path="/observe/:id" element={<ObservationDetailPage />} />
+          <Route path="/observe/:id/edit" element={<ObserveEditPage />} />
+          {/* History routes */}
+          <Route path="/history" element={<Navigate to="/history/prompts" replace />} />
+          <Route path="/history/prompts" element={<HistoryPromptsPage />} />
         </Routes>
       </Layout>
     </BrowserRouter>
