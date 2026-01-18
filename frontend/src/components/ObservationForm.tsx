@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import type { Model, Tag } from '../types';
 import ModelSelector from './ModelSelector';
@@ -67,6 +67,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
   const [editSuccess, setEditSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState('');
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
 
   // New tag creation
   const [showNewTagInput, setShowNewTagInput] = useState(false);
@@ -276,6 +277,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
 
     setIsSubmitting(true);
     setError(null);
+    setApiKeyError(null);
     setEditSuccess(false);
 
     // Convert schedule type to cron expression
@@ -292,7 +294,10 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
         // Update existing observation - no results display needed
         const res = await fetch(`/api/observations/${editId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
           body: JSON.stringify({
             display_name: displayName || null,
             model_ids: Array.from(selectedModels),
@@ -302,6 +307,18 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
           }),
         });
 
+        // Handle auth errors specifically
+        if (res.status === 401 || res.status === 500) {
+          const data = (await res.json()) as { error?: string };
+          const errorMsg = data.error || (res.status === 401 ? 'Invalid API key' : 'Server error');
+          if (res.status === 401 || errorMsg.toLowerCase().includes('api key')) {
+            setApiKeyError(errorMsg);
+            setIsSubmitting(false);
+            return;
+          }
+          throw new Error(errorMsg);
+        }
+
         if (!res.ok) {
           const data = (await res.json()) as { error?: string };
           throw new Error(data.error || 'Failed to update observation');
@@ -310,33 +327,26 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
         setEditSuccess(true);
         setCreatedObservationId(editId);
       } else {
-        // Create mode - show results
+        // Create mode - clear previous results and observation ID
         setResults(new Map());
         setCreatedObservationId(null);
 
-        // Initialize all selected models with pending status
-        const initialResults = new Map<string, ModelResult>();
         const selectedModelsList = models.filter((m) => selectedModels.has(m.id));
 
+        // Initialize all models with loading state
+        const initialResults = new Map<string, ModelResult>();
         for (const model of selectedModelsList) {
           initialResults.set(model.id, {
             modelId: model.id,
             displayName: model.display_name,
-            status: 'pending',
+            status: 'loading',
+            startTime: Date.now(),
           });
         }
         setResults(initialResults);
 
-        // Update all to loading
-        setResults((prev) => {
-          const next = new Map(prev);
-          for (const [id, result] of next) {
-            next.set(id, { ...result, status: 'loading', startTime: Date.now() });
-          }
-          return next;
-        });
-        // Create new observation and run
-        const res = await fetch('/api/observations', {
+        // Use streaming endpoint for progressive results
+        const res = await fetch('/api/observations/stream', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -353,52 +363,81 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
           }),
         });
 
+        // Handle auth errors specifically - show near API key field, don't show results
+        if (res.status === 401 || res.status === 500) {
+          const data = (await res.json()) as { error?: string };
+          const errorMsg = data.error || (res.status === 401 ? 'Invalid API key' : 'Server error');
+          if (res.status === 401 || errorMsg.toLowerCase().includes('api key')) {
+            setApiKeyError(errorMsg);
+            setResults(new Map()); // Clear results on auth failure
+            setIsSubmitting(false);
+            return;
+          }
+          throw new Error(errorMsg);
+        }
+
         if (!res.ok) {
           const data = (await res.json()) as { error?: string };
+          setResults(new Map()); // Clear results on error
           throw new Error(data.error || 'Failed to create observation');
         }
 
-        const data = (await res.json()) as {
-          observation: { id: string };
-          results?: Array<{ modelId: string; success: boolean; latencyMs?: number; error?: string; response?: string }>;
-        };
+        // Process SSE stream for progressive results
+        const reader = res.body?.getReader();
+        if (!reader) {
+          throw new Error('No response body');
+        }
 
-        setCreatedObservationId(data.observation.id);
+        const decoder = new TextDecoder();
+        let buffer = '';
 
-        // Update results based on API response
-        if (data.results) {
-          setResults((prev) => {
-            const next = new Map(prev);
-            for (const result of data.results!) {
-              const existing = next.get(result.modelId);
-              if (existing) {
-                next.set(result.modelId, {
-                  ...existing,
-                  status: result.success ? 'success' : 'error',
-                  latencyMs: result.latencyMs,
-                  error: result.error,
-                  response: result.response,
-                });
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const event = JSON.parse(line.slice(6)) as {
+                  type: 'observation' | 'result' | 'done';
+                  observation?: { id: string };
+                  result?: { modelId: string; success: boolean; latencyMs?: number; error?: string; response?: string };
+                };
+
+                if (event.type === 'observation' && event.observation) {
+                  setCreatedObservationId(event.observation.id);
+                } else if (event.type === 'result' && event.result) {
+                  const result = event.result;
+                  const model = selectedModelsList.find((m) => m.id === result.modelId);
+                  setResults((prev) => {
+                    const next = new Map(prev);
+                    next.set(result.modelId, {
+                      modelId: result.modelId,
+                      displayName: model?.display_name || result.modelId,
+                      status: result.success ? 'success' : 'error',
+                      latencyMs: result.latencyMs,
+                      error: result.error,
+                      response: result.response,
+                    });
+                    return next;
+                  });
+                }
+                // type === 'done' - stream is ending
+              } catch {
+                // Ignore JSON parse errors
               }
             }
-            return next;
-          });
+          }
         }
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Request failed';
       setError(errorMsg);
-
-      // Mark all as error (only relevant in create mode where results exist)
-      if (!isEditing) {
-        setResults((prev) => {
-          const next = new Map(prev);
-          for (const [id, result] of next) {
-            next.set(id, { ...result, status: 'error', error: errorMsg });
-          }
-          return next;
-        });
-      }
+      // Don't show results on error - keep them cleared
     }
 
     setIsSubmitting(false);
@@ -657,8 +696,8 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
 
         {/* Footer with API key and submit button */}
         <div className="px-6 py-4 bg-paper-dark border-t border-border space-y-3">
-          {/* API key input - required for running observations */}
-          {!isEditing && (
+          {/* API key input - required for all observation operations */}
+          <div className="space-y-1">
             <div className="flex items-center gap-3">
               <label htmlFor="apiKey" className="text-sm font-medium text-ink whitespace-nowrap">
                 API Key
@@ -667,15 +706,25 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
                 type="password"
                 id="apiKey"
                 value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Required to run observation"
-                className="flex-1 px-3 py-2 rounded-lg text-sm border border-border focus:border-amber focus:ring-1 focus:ring-amber"
+                onChange={(e) => {
+                  setApiKey(e.target.value);
+                  setApiKeyError(null); // Clear error when user types
+                }}
+                placeholder={isEditing ? 'Required to save changes' : 'Required to run observation'}
+                className={`flex-1 px-3 py-2 rounded-lg text-sm border focus:ring-1 ${
+                  apiKeyError
+                    ? 'border-error focus:border-error focus:ring-error'
+                    : 'border-border focus:border-amber focus:ring-amber'
+                }`}
               />
             </div>
-          )}
+            {apiKeyError && (
+              <p className="text-sm text-error ml-[4.5rem]">{apiKeyError}</p>
+            )}
+          </div>
           <button
             onClick={handleSubmit}
-            disabled={isSubmitting || !prompt.trim() || selectedModels.size === 0 || !wordLimitValid || (!isEditing && !apiKey)}
+            disabled={isSubmitting || !prompt.trim() || selectedModels.size === 0 || (!isEditing && !wordLimitValid) || !apiKey}
             className="w-full btn-primary py-3 rounded-lg font-medium disabled:opacity-50"
           >
             {isSubmitting
@@ -716,6 +765,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
 
 function ResultCard({ result }: { result: ModelResult }) {
   const [elapsed, setElapsed] = useState(0);
+  const hasAutoExpandedRef = useRef(false);
   // Auto-expand when result completes successfully with a response
   const [expanded, setExpanded] = useState(result.status === 'success' && !!result.response);
 
@@ -733,8 +783,11 @@ function ResultCard({ result }: { result: ModelResult }) {
   }, [result.status, result.startTime]);
 
   // Auto-expand when result transitions to success with response
+  // This is intentional and safe - we only expand once when the result arrives
   useEffect(() => {
-    if (result.status === 'success' && result.response) {
+    if (result.status === 'success' && result.response && !hasAutoExpandedRef.current) {
+      hasAutoExpandedRef.current = true;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-time auto-expand when result arrives
       setExpanded(true);
     }
   }, [result.status, result.response]);
@@ -779,9 +832,9 @@ function ResultCard({ result }: { result: ModelResult }) {
           )}
 
           {result.status === 'success' && renderedResponse && (
+            // renderMarkdown sanitizes HTML by escaping < and > before processing
             <div
               className="text-ink-light text-sm markdown-content"
-              // eslint-disable-next-line react/no-danger -- renderMarkdown sanitizes input
               dangerouslySetInnerHTML={{ __html: renderedResponse }}
             />
           )}
