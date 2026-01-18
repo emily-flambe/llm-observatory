@@ -49,7 +49,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [scheduleType, setScheduleType] = useState<'none' | 'daily' | 'weekly' | 'monthly' | 'custom'>('none');
   const [cronExpression, setCronExpression] = useState('0 6 * * *');
-  const [wordLimit, setWordLimit] = useState(50);
+  const [wordLimit, setWordLimit] = useState('50');
   const [useWordLimit, setUseWordLimit] = useState(true);
 
   // Submission state
@@ -66,6 +66,11 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
   const [creatingTag, setCreatingTag] = useState(false);
 
   const isEditing = !!editId;
+
+  // Validate word limit: must be integer between 1 and 500
+  const wordLimitValue = wordLimit ? parseInt(wordLimit, 10) : NaN;
+  const wordLimitValid = !useWordLimit || (!isNaN(wordLimitValue) && wordLimitValue >= 1 && wordLimitValue <= 500);
+  const wordLimitError = useWordLimit && !wordLimitValid ? 'Word limit must be between 1 and 500' : null;
 
   // Load models and tags
   useEffect(() => {
@@ -330,7 +335,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
             display_name: displayName || null,
             model_ids: Array.from(selectedModels),
             tag_ids: Array.from(selectedTags),
-            word_limit: useWordLimit ? wordLimit : undefined,
+            word_limit: useWordLimit ? wordLimitValue : undefined,
             schedule_type: scheduleType === 'none' ? null : scheduleType,
             cron_expression: finalCron,
           }),
@@ -454,18 +459,14 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
                 Limit response to
               </label>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 value={wordLimit}
                 onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  if (!isNaN(val) && val >= 1) setWordLimit(val);
+                  // Only allow digits, allow empty string
+                  const val = e.target.value.replace(/\D/g, '');
+                  setWordLimit(val);
                 }}
-                onKeyDown={(e) => {
-                  if (e.key === 'e' || e.key === 'E' || e.key === '+' || e.key === '-') {
-                    e.preventDefault();
-                  }
-                }}
-                min={1}
                 disabled={!useWordLimit}
                 className="w-20 px-2 py-1 rounded text-sm text-center border border-border disabled:opacity-50"
               />
@@ -478,6 +479,9 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
                   Appends "Limit your response to N words." to your prompt
                 </span>
               </span>
+              {wordLimitError && (
+                <span className="text-xs text-error ml-2">{wordLimitError}</span>
+              )}
             </div>
           )}
 
@@ -643,7 +647,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
         <div className="px-6 py-4 bg-paper-dark border-t border-border">
           <button
             onClick={handleSubmit}
-            disabled={isSubmitting || !prompt.trim() || selectedModels.size === 0}
+            disabled={isSubmitting || !prompt.trim() || selectedModels.size === 0 || !wordLimitValid}
             className="w-full btn-primary py-3 rounded-lg font-medium disabled:opacity-50"
           >
             {isSubmitting
