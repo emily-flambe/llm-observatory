@@ -67,7 +67,114 @@ function ObserveEditPage() {
   );
 }
 
-function ManageCollectionCard({ collection }: { collection: Collection }) {
+// Helper to get stored timezone or default to browser timezone
+function getStoredTimezone(): string {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('observatory-timezone') || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  }
+  return 'UTC';
+}
+
+function setStoredTimezone(tz: string): void {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('observatory-timezone', tz);
+  }
+}
+
+// Common timezones for the dropdown
+const COMMON_TIMEZONES = [
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'America/Anchorage',
+  'Pacific/Honolulu',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Asia/Tokyo',
+  'Asia/Shanghai',
+  'Asia/Singapore',
+  'Australia/Sydney',
+  'UTC',
+];
+
+// Calculate next scheduled run based on schedule type and last run
+function calculateNextRun(
+  scheduleType: string | null,
+  _cronExpression: string | null,
+  lastRunAt: string | null,
+  _timezone: string
+): Date | null {
+  if (!scheduleType) return null;
+
+  const now = new Date();
+  let baseDate = lastRunAt ? parseBigQueryTimestamp(lastRunAt) : now;
+
+  // If last run is in the future somehow, use now
+  if (baseDate > now) baseDate = now;
+
+  let nextRun: Date;
+
+  switch (scheduleType) {
+    case 'daily':
+      nextRun = new Date(baseDate);
+      nextRun.setDate(nextRun.getDate() + 1);
+      nextRun.setHours(9, 0, 0, 0); // 9 AM
+      while (nextRun <= now) {
+        nextRun.setDate(nextRun.getDate() + 1);
+      }
+      break;
+    case 'weekly':
+      nextRun = new Date(baseDate);
+      nextRun.setDate(nextRun.getDate() + 7);
+      nextRun.setHours(9, 0, 0, 0);
+      while (nextRun <= now) {
+        nextRun.setDate(nextRun.getDate() + 7);
+      }
+      break;
+    case 'monthly':
+      nextRun = new Date(baseDate);
+      nextRun.setMonth(nextRun.getMonth() + 1);
+      nextRun.setHours(9, 0, 0, 0);
+      while (nextRun <= now) {
+        nextRun.setMonth(nextRun.getMonth() + 1);
+      }
+      break;
+    case 'custom':
+      // For custom cron, we'd need a cron parser - for now just show "Custom schedule"
+      return null;
+    default:
+      return null;
+  }
+
+  return nextRun;
+}
+
+function formatDateInTimezone(date: Date, timezone: string): string {
+  try {
+    return date.toLocaleString('en-US', {
+      timeZone: timezone,
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return date.toLocaleString();
+  }
+}
+
+function ManageCollectionCard({ collection, onUpdate }: { collection: Collection; onUpdate?: () => void }) {
+  const [scheduleExpanded, setScheduleExpanded] = useState(false);
+  const [scheduleType, setScheduleType] = useState<string>(collection.schedule_type || '');
+  const [cronExpression, setCronExpression] = useState(collection.cron_expression || '');
+  const [timezone, setTimezone] = useState(getStoredTimezone);
+  const [saving, setSaving] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
   const lastRunDate = collection.last_run_at ? parseBigQueryTimestamp(collection.last_run_at) : null;
   const displayName = collection.display_name || (collection.prompt_text?.slice(0, 50) + (collection.prompt_text && collection.prompt_text.length > 50 ? '...' : ''));
   const isDisabled = collection.disabled === 1;
@@ -89,11 +196,49 @@ function ManageCollectionCard({ collection }: { collection: Collection }) {
     return collection.schedule_type.charAt(0).toUpperCase() + collection.schedule_type.slice(1);
   };
 
+  const nextRun = calculateNextRun(collection.schedule_type, collection.cron_expression, collection.last_run_at, timezone);
+
+  const handleSaveSchedule = async () => {
+    if (!apiKey.trim()) {
+      setError('API key is required');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/observations/${collection.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          schedule_type: scheduleType || null,
+          cron_expression: scheduleType === 'custom' ? cronExpression : null,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json() as { error?: string };
+        throw new Error(data.error || 'Failed to update schedule');
+      }
+
+      // Save timezone preference
+      setStoredTimezone(timezone);
+
+      setScheduleExpanded(false);
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <Link
-      to={`/observe/${collection.id}`}
-      className={`block bg-white border border-border rounded-lg p-4 hover:border-amber transition-colors ${isDisabled ? 'opacity-60' : ''}`}
-    >
+    <div className={`bg-white border border-border rounded-lg p-4 transition-colors ${isDisabled ? 'opacity-60' : ''}`}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -103,21 +248,133 @@ function ManageCollectionCard({ collection }: { collection: Collection }) {
             </span>
           </div>
           <p className="text-sm text-ink-muted mt-1 line-clamp-2">{collection.prompt_text}</p>
-          <div className="mt-2 flex items-center gap-3 text-xs text-ink-muted">
+          <div className="mt-2 flex items-center gap-3 text-xs text-ink-muted flex-wrap">
             <span>{collection.model_count} model{collection.model_count !== 1 ? 's' : ''}</span>
             <span>·</span>
-            <span>{formatSchedule()}</span>
+            <span className="inline-flex items-center gap-1">
+              {formatSchedule()}
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setScheduleExpanded(!scheduleExpanded);
+                }}
+                className="p-0.5 hover:bg-paper rounded text-ink-muted hover:text-amber transition-colors"
+                title="Edit schedule"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+            </span>
             {lastRunDate && (
               <>
                 <span>·</span>
-                <span>Last run: {lastRunDate.toLocaleDateString()} {lastRunDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                <span>Last: {formatDateInTimezone(lastRunDate, timezone)}</span>
+              </>
+            )}
+            {nextRun && !collection.is_paused && (
+              <>
+                <span>·</span>
+                <span className="text-green-600">Next: {formatDateInTimezone(nextRun, timezone)}</span>
               </>
             )}
           </div>
         </div>
-        <span className="text-xs text-ink-muted shrink-0">View →</span>
+        <Link
+          to={`/observe/${collection.id}`}
+          className="text-xs text-amber hover:text-amber-dark shrink-0"
+        >
+          View →
+        </Link>
       </div>
-    </Link>
+
+      {/* Inline Schedule Editor */}
+      {scheduleExpanded && (
+        <div className="mt-4 pt-4 border-t border-border" onClick={(e) => e.stopPropagation()}>
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-3">
+              <div className="flex-1 min-w-[140px]">
+                <label className="block text-xs text-ink-muted mb-1">Schedule</label>
+                <select
+                  value={scheduleType}
+                  onChange={(e) => setScheduleType(e.target.value)}
+                  className="w-full px-2 py-1.5 text-sm border border-border rounded bg-white"
+                >
+                  <option value="">No schedule</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="custom">Custom (cron)</option>
+                </select>
+              </div>
+
+              {scheduleType === 'custom' && (
+                <div className="flex-1 min-w-[140px]">
+                  <label className="block text-xs text-ink-muted mb-1">Cron Expression</label>
+                  <input
+                    type="text"
+                    value={cronExpression}
+                    onChange={(e) => setCronExpression(e.target.value)}
+                    placeholder="0 9 * * *"
+                    className="w-full px-2 py-1.5 text-sm border border-border rounded font-mono"
+                  />
+                </div>
+              )}
+
+              <div className="flex-1 min-w-[160px]">
+                <label className="block text-xs text-ink-muted mb-1">Timezone</label>
+                <select
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  className="w-full px-2 py-1.5 text-sm border border-border rounded bg-white"
+                >
+                  {COMMON_TIMEZONES.map((tz) => (
+                    <option key={tz} value={tz}>{tz.replace(/_/g, ' ')}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-xs text-ink-muted mb-1">API Key</label>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Required to save changes"
+                className="w-full px-2 py-1.5 text-sm border border-border rounded"
+              />
+            </div>
+
+            {error && (
+              <p className="text-xs text-error">{error}</p>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleSaveSchedule}
+                disabled={saving}
+                className="px-3 py-1.5 text-xs font-medium bg-amber text-white rounded hover:bg-amber-dark disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Save Schedule'}
+              </button>
+              <button
+                onClick={() => {
+                  setScheduleExpanded(false);
+                  setScheduleType(collection.schedule_type || '');
+                  setCronExpression(collection.cron_expression || '');
+                  setError(null);
+                }}
+                className="px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -126,6 +383,11 @@ function ObserveManagePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDisabled, setShowDisabled] = useState(false);
+  const [refreshCounter, setRefreshCounter] = useState(0);
+
+  const refresh = useCallback(() => {
+    setRefreshCounter((c) => c + 1);
+  }, []);
 
   useEffect(() => {
     fetch(`/api/observations?includeDisabled=${showDisabled}`)
@@ -143,7 +405,7 @@ function ObserveManagePage() {
         setCollections([]);
       })
       .finally(() => setLoading(false));
-  }, [showDisabled]);
+  }, [showDisabled, refreshCounter]);
 
   return (
     <div>
@@ -176,7 +438,7 @@ function ObserveManagePage() {
       ) : (
         <div className="space-y-4">
           {collections.map((collection) => (
-            <ManageCollectionCard key={collection.id} collection={collection} />
+            <ManageCollectionCard key={collection.id} collection={collection} onUpdate={refresh} />
           ))}
         </div>
       )}
