@@ -171,21 +171,21 @@ export default function Landing() {
       {/* Features */}
       <section className="grid gap-4 sm:grid-cols-3">
         <Link
-          to="/observe"
-          className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
-        >
-          <h3 className="font-semibold text-ink mb-2">Observe</h3>
-          <p className="text-sm text-ink-muted">
-            Run prompts across models, save observations, schedule recurring runs.
-          </p>
-        </Link>
-        <Link
           to="/models"
           className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
         >
           <h3 className="font-semibold text-ink mb-2">Models</h3>
           <p className="text-sm text-ink-muted">
             Explore supported LLM providers, model capabilities, and release dates.
+          </p>
+        </Link>
+        <Link
+          to="/observe"
+          className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
+        >
+          <h3 className="font-semibold text-ink mb-2">Observe</h3>
+          <p className="text-sm text-ink-muted">
+            Run prompts across models, save observations, schedule recurring runs.
           </p>
         </Link>
         <Link
