@@ -13,13 +13,21 @@ interface XAIChatResponse {
   };
 }
 
+interface XAIContentItem {
+  type: string;
+  text?: string;
+  url?: string;
+  title?: string;
+}
+
+interface XAIOutputItem {
+  type: string;
+  content?: XAIContentItem[];
+  role?: string;
+}
+
 interface XAIResponsesResult {
-  output: Array<{
-    type: string;
-    content?: string;
-    url?: string;
-    title?: string;
-  }>;
+  output: XAIOutputItem[];
   usage: {
     input_tokens: number;
     output_tokens: number;
@@ -124,14 +132,18 @@ export class XAIProvider implements LLMProvider {
     let content = '';
     const citations: Citation[] = [];
 
-    for (const item of data.output || []) {
-      if (item.type === 'text' && item.content) {
-        content = item.content;
-      } else if (item.type === 'web_search_result' && item.url) {
-        citations.push({
-          url: item.url,
-          title: item.title,
-        });
+    for (const outputItem of data.output || []) {
+      if (outputItem.type === 'message' && outputItem.content) {
+        for (const contentItem of outputItem.content) {
+          if (contentItem.type === 'output_text' && contentItem.text) {
+            content = contentItem.text;
+          } else if (contentItem.type === 'web_search_result' && contentItem.url) {
+            citations.push({
+              url: contentItem.url,
+              title: contentItem.title,
+            });
+          }
+        }
       }
     }
 

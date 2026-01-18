@@ -206,7 +206,10 @@ describe('LLM Providers - Grounding Support', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          output: [{ type: 'text', content: 'Test response' }],
+          output: [{
+            type: 'message',
+            content: [{ type: 'output_text', text: 'Test response' }],
+          }],
           usage: { input_tokens: 10, output_tokens: 20 },
         }),
       });
@@ -224,10 +227,13 @@ describe('LLM Providers - Grounding Support', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          output: [
-            { type: 'web_search_result', url: 'https://example.com', title: 'Example' },
-            { type: 'text', content: 'Test response' },
-          ],
+          output: [{
+            type: 'message',
+            content: [
+              { type: 'web_search_result', url: 'https://example.com', title: 'Example' },
+              { type: 'output_text', text: 'Test response' },
+            ],
+          }],
           usage: { input_tokens: 10, output_tokens: 20 },
         }),
       });

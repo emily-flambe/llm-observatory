@@ -38,6 +38,9 @@ export class OpenAIProvider implements LLMProvider {
       this.modelName.startsWith('o3') ||
       this.modelName.startsWith('gpt-5');
 
+    // Search-preview models don't support temperature
+    const isSearchModel = this.modelName.includes('search');
+
     const startTime = Date.now();
 
     // Build request body
@@ -47,7 +50,7 @@ export class OpenAIProvider implements LLMProvider {
       ...(usesCompletionTokens
         ? { max_completion_tokens: maxTokens }
         : { max_tokens: maxTokens }),
-      temperature,
+      ...(!isSearchModel && { temperature }),
     };
 
     // Add web search options for grounded models
