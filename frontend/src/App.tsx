@@ -1038,7 +1038,7 @@ function Layout({ children }: { children: React.ReactNode }) {
                   }`
                 }
               >
-                Collect
+                Observe
               </NavLink>
               <NavLink
                 to="/browse"
