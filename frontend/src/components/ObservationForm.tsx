@@ -58,6 +58,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
   const [createdObservationId, setCreatedObservationId] = useState<string | null>(null);
   const [editSuccess, setEditSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState('');
 
   // New tag creation
   const [showNewTagInput, setShowNewTagInput] = useState(false);
@@ -329,7 +330,10 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
         // Create new observation and run
         const res = await fetch('/api/observations', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
           body: JSON.stringify({
             prompt_text: prompt.trim(),
             display_name: displayName || null,
@@ -643,11 +647,27 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
           </div>
         </div>
 
-        {/* Footer with submit button */}
-        <div className="px-6 py-4 bg-paper-dark border-t border-border">
+        {/* Footer with API key and submit button */}
+        <div className="px-6 py-4 bg-paper-dark border-t border-border space-y-3">
+          {/* API key input - required for running observations */}
+          {!isEditing && (
+            <div className="flex items-center gap-3">
+              <label htmlFor="apiKey" className="text-sm font-medium text-ink whitespace-nowrap">
+                API Key
+              </label>
+              <input
+                type="password"
+                id="apiKey"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Required to run observation"
+                className="flex-1 px-3 py-2 rounded-lg text-sm border border-border focus:border-amber focus:ring-1 focus:ring-amber"
+              />
+            </div>
+          )}
           <button
             onClick={handleSubmit}
-            disabled={isSubmitting || !prompt.trim() || selectedModels.size === 0 || !wordLimitValid}
+            disabled={isSubmitting || !prompt.trim() || selectedModels.size === 0 || !wordLimitValid || (!isEditing && !apiKey)}
             className="w-full btn-primary py-3 rounded-lg font-medium disabled:opacity-50"
           >
             {isSubmitting

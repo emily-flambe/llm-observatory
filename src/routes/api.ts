@@ -543,8 +543,16 @@ api.get('/observations/:id', async (c) => {
   });
 });
 
-// Create new observation and run immediately
+// Create new observation and run immediately (requires API key)
 api.post('/observations', async (c) => {
+  // Validate Bearer token
+  const authHeader = c.req.header('Authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+  if (!token || token !== c.env.ADMIN_API_KEY) {
+    return c.json({ error: 'Invalid or missing API key' }, 401);
+  }
+
   const body = await c.req.json<{
     prompt_text: string;
     display_name?: string;
