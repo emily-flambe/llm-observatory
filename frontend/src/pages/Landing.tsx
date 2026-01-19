@@ -194,7 +194,7 @@ export default function Landing() {
         >
           <h3 className="font-semibold text-ink mb-2">History</h3>
           <p className="text-sm text-ink-muted">
-            Browse and compare collected responses across models.
+            View prompts and responses from previous swarm executions.
           </p>
         </Link>
         <Link
