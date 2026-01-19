@@ -97,8 +97,13 @@ function getEffectiveCron(observation: ObservationWithDetails): string | null {
 
 /**
  * Run all scheduled observations that are due
+ * @param env - Environment bindings
+ * @param scheduledTime - The time the cron trigger fired (not the execution time)
  */
-export async function runScheduledObservations(env: Env): Promise<{
+export async function runScheduledObservations(
+  env: Env,
+  scheduledTime: Date
+): Promise<{
   checked: number;
   ran: number;
   results: Array<{
@@ -108,7 +113,6 @@ export async function runScheduledObservations(env: Env): Promise<{
     error?: string;
   }>;
 }> {
-  const now = new Date();
   const observations = await getObservations(env.DB);
 
   const results: Array<{
@@ -131,8 +135,8 @@ export async function runScheduledObservations(env: Env): Promise<{
       continue;
     }
 
-    // Check if cron matches current time
-    if (!cronMatchesNow(cronExpression, now)) {
+    // Check if cron matches the scheduled trigger time (not current execution time)
+    if (!cronMatchesNow(cronExpression, scheduledTime)) {
       continue;
     }
 
