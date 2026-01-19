@@ -171,7 +171,7 @@ export default function Landing() {
       {/* Features */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Link
-          to="/observe"
+          to="/swarm"
           className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
         >
           <h3 className="font-semibold text-ink mb-2">Create</h3>
@@ -180,7 +180,7 @@ export default function Landing() {
           </p>
         </Link>
         <Link
-          to="/observe/manage"
+          to="/swarm/manage"
           className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
         >
           <h3 className="font-semibold text-ink mb-2">Manage</h3>
