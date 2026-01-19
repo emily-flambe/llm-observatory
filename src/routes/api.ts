@@ -40,19 +40,19 @@ import { requireAccess } from '../middleware/access';
 import { checkRateLimit, incrementRateLimit, getRateLimitStatus } from '../services/ratelimit';
 import { createTag, getTags, deleteTag } from '../services/tags';
 import {
-  createObservation,
-  getObservation,
-  getObservations,
-  updateObservation,
-  deleteObservation,
-  restoreObservation,
-  getObservationVersionModels,
-  getObservationTags,
-  getObservationVersions,
-  updateObservationLastRunAt,
-  createObservationRun,
-  getObservationRuns,
-} from '../services/observations';
+  createSwarm,
+  getSwarm,
+  getSwarms,
+  updateSwarm,
+  deleteSwarm,
+  restoreSwarm,
+  getSwarmVersionModels,
+  getSwarmTags,
+  getSwarmVersions,
+  updateSwarmLastRunAt,
+  createSwarmRun,
+  getSwarmRuns,
+} from '../services/swarms';
 
 type Variables = {
   userEmail?: string;
@@ -346,26 +346,26 @@ api.get('/prompts', async (c) => {
   return c.json({ prompts: result.data });
 });
 
-// ==================== Observations ====================
+// ==================== Swarms ====================
 
-// Helper to run an observation (similar to runCollectionInternal)
-async function runObservationInternal(
+// Helper to run a swarm (similar to runCollectionInternal)
+async function runSwarmInternal(
   env: Env,
   db: D1Database,
-  observationId: string
+  swarmId: string
 ): Promise<{
   success: boolean;
   error?: string;
   results?: Array<{ modelId: string; success: boolean; latencyMs?: number; error?: string; response?: string }>;
 }> {
-  const observation = await getObservation(db, observationId);
-  if (!observation) {
-    return { success: false, error: 'Observation not found' };
+  const swarm = await getSwarm(db, swarmId);
+  if (!swarm) {
+    return { success: false, error: 'Swarm not found' };
   }
 
-  const modelIds = await getObservationVersionModels(db, observationId);
+  const modelIds = await getSwarmVersionModels(db, swarmId);
   if (modelIds.length === 0) {
-    return { success: false, error: 'Observation has no models configured' };
+    return { success: false, error: 'Swarm has no models configured' };
   }
 
   // Check rate limit
@@ -381,7 +381,7 @@ async function runObservationInternal(
   const promptId = crypto.randomUUID();
   const collectedAt = new Date().toISOString();
 
-  // Run observation against all models in parallel
+  // Run swarm against all models in parallel
   const modelPromises = modelIds.map(async (modelId) => {
     const model = await getModel(db, modelId);
     if (!model) {
@@ -399,7 +399,7 @@ async function runObservationInternal(
       const grounded = model.grounded === 1;
       const provider = createLLMProvider(model.id, model.provider, model.model_name, env, grounded);
       const start = Date.now();
-      const response = await provider.complete({ prompt: observation.prompt_text });
+      const response = await provider.complete({ prompt: swarm.prompt_text });
       latencyMs = Date.now() - start;
       responseContent = response.content;
       reasoningContent = response.reasoningContent ?? null;
@@ -419,12 +419,12 @@ async function runObservationInternal(
       outputCost = (outputTokens / 1_000_000) * model.output_price_per_m;
     }
 
-    // Save to BigQuery with observation reference
+    // Save to BigQuery with swarm reference (use observation_id field for BQ compatibility)
     const bqRow: BigQueryRow = {
       id: crypto.randomUUID(),
       prompt_id: promptId,
       collected_at: collectedAt,
-      source: 'observation',
+      source: 'swarm',
       company: extractCompany(model.provider, model.model_name),
       product: extractProductFamily(model.model_name),
       model: model.model_name,
@@ -432,7 +432,7 @@ async function runObservationInternal(
       topic_name: null,
       prompt_template_id: null,
       prompt_template_name: null,
-      prompt: observation.prompt_text,
+      prompt: swarm.prompt_text,
       response: responseContent,
       reasoning_content: reasoningContent,
       latency_ms: latencyMs,
@@ -442,12 +442,12 @@ async function runObservationInternal(
       output_cost: outputCost,
       error: errorMsg,
       success: !errorMsg,
-      observation_id: observation.id,
-      observation_version: observation.current_version,
+      observation_id: swarm.id,
+      observation_version: swarm.current_version,
     };
     insertRow(env, bqRow).then((result) => {
       if (!result.success) {
-        console.error('Failed to save observation response to BigQuery:', result.error);
+        console.error('Failed to save swarm response to BigQuery:', result.error);
       }
     }).catch((err) => {
       console.error('BigQuery insert exception:', err);
@@ -461,10 +461,10 @@ async function runObservationInternal(
   const results = await Promise.all(modelPromises);
 
   // Store results in D1 for immediate access (BigQuery has streaming delay)
-  await createObservationRun(
+  await createSwarmRun(
     db,
-    observationId,
-    observation.current_version,
+    swarmId,
+    swarm.current_version,
     results.map((r) => ({
       modelId: r.modelId,
       response: r.success ? r.response : undefined,
@@ -475,7 +475,7 @@ async function runObservationInternal(
   );
 
   // Update last_run_at
-  await updateObservationLastRunAt(db, observationId);
+  await updateSwarmLastRunAt(db, swarmId);
 
   // Increment rate limit
   await incrementRateLimit(db, 'collect', results.length);
@@ -483,63 +483,63 @@ async function runObservationInternal(
   return { success: true, results };
 }
 
-// List all observations
-api.get('/observations', async (c) => {
+// List all swarms
+api.get('/swarms', async (c) => {
   const includeDisabledParam = c.req.query('includeDisabled');
   const includeDisabled = includeDisabledParam === 'true';
   const tagsParam = c.req.query('tags'); // comma-separated tag IDs
   const search = c.req.query('search');
 
-  let observations = await getObservations(c.env.DB, { includeDisabled });
+  let swarms = await getSwarms(c.env.DB, { includeDisabled });
 
-  // Fetch tags for each observation
-  const observationsWithTags = await Promise.all(
-    observations.map(async (obs) => {
-      const tags = await getObservationTags(c.env.DB, obs.id);
-      return { ...obs, tags };
+  // Fetch tags for each swarm
+  const swarmsWithTags = await Promise.all(
+    swarms.map(async (s) => {
+      const tags = await getSwarmTags(c.env.DB, s.id);
+      return { ...s, tags };
     })
   );
 
   // Filter by tags if specified
   if (tagsParam) {
     const filterTagIds = tagsParam.split(',').filter(Boolean);
-    observations = observationsWithTags.filter((obs) =>
-      obs.tags?.some((tag) => filterTagIds.includes(tag.id))
+    swarms = swarmsWithTags.filter((s) =>
+      s.tags?.some((tag) => filterTagIds.includes(tag.id))
     );
   }
 
   // Filter by search if specified
   if (search) {
     const searchLower = search.toLowerCase();
-    observations = observationsWithTags.filter(
-      (obs) =>
-        obs.prompt_text.toLowerCase().includes(searchLower) ||
-        (obs.display_name && obs.display_name.toLowerCase().includes(searchLower))
+    swarms = swarmsWithTags.filter(
+      (s) =>
+        s.prompt_text.toLowerCase().includes(searchLower) ||
+        (s.display_name && s.display_name.toLowerCase().includes(searchLower))
     );
   }
 
-  return c.json({ observations: tagsParam || search ? observations : observationsWithTags });
+  return c.json({ swarms: tagsParam || search ? swarms : swarmsWithTags });
 });
 
-// Get single observation with details
-api.get('/observations/:id', async (c) => {
+// Get single swarm with details
+api.get('/swarms/:id', async (c) => {
   const { id } = c.req.param();
-  const observation = await getObservation(c.env.DB, id);
-  if (!observation) {
-    return c.json({ error: 'Observation not found' }, 404);
+  const swarm = await getSwarm(c.env.DB, id);
+  if (!swarm) {
+    return c.json({ error: 'Swarm not found' }, 404);
   }
 
-  // Get models, tags, and versions for this observation
-  const modelIds = await getObservationVersionModels(c.env.DB, id);
-  const tags = await getObservationTags(c.env.DB, id);
-  const versions = await getObservationVersions(c.env.DB, id);
+  // Get models, tags, and versions for this swarm
+  const modelIds = await getSwarmVersionModels(c.env.DB, id);
+  const tags = await getSwarmTags(c.env.DB, id);
+  const versions = await getSwarmVersions(c.env.DB, id);
 
   // Return models as objects with id property (for frontend compatibility)
   const models = modelIds.map((id) => ({ id }));
 
   return c.json({
-    observation: {
-      ...observation,
+    swarm: {
+      ...swarm,
       models,
       tags,
       versions,
@@ -547,11 +547,11 @@ api.get('/observations/:id', async (c) => {
   });
 });
 
-// Run a single model for an observation (used for progressive results)
+// Run a single model for a swarm (used for progressive results)
 async function runSingleModel(
   env: Env,
   db: D1Database,
-  observation: { id: string; prompt_text: string; current_version: number },
+  swarm: { id: string; prompt_text: string; current_version: number },
   modelId: string,
   promptId: string,
   collectedAt: string
@@ -572,7 +572,7 @@ async function runSingleModel(
     const grounded = model.grounded === 1;
     const provider = createLLMProvider(model.id, model.provider, model.model_name, env, grounded);
     const start = Date.now();
-    const response = await provider.complete({ prompt: observation.prompt_text });
+    const response = await provider.complete({ prompt: swarm.prompt_text });
     latencyMs = Date.now() - start;
     responseContent = response.content;
     reasoningContent = response.reasoningContent ?? null;
@@ -592,12 +592,12 @@ async function runSingleModel(
     outputCost = (outputTokens / 1_000_000) * model.output_price_per_m;
   }
 
-  // Save to BigQuery
+  // Save to BigQuery (use observation_id field for BQ compatibility)
   const bqRow: BigQueryRow = {
     id: crypto.randomUUID(),
     prompt_id: promptId,
     collected_at: collectedAt,
-    source: 'observation',
+    source: 'swarm',
     company: extractCompany(model.provider, model.model_name),
     product: extractProductFamily(model.model_name),
     model: model.model_name,
@@ -605,7 +605,7 @@ async function runSingleModel(
     topic_name: null,
     prompt_template_id: null,
     prompt_template_name: null,
-    prompt: observation.prompt_text,
+    prompt: swarm.prompt_text,
     response: responseContent,
     reasoning_content: reasoningContent,
     latency_ms: latencyMs,
@@ -615,8 +615,8 @@ async function runSingleModel(
     output_cost: outputCost,
     error: errorMsg,
     success: !errorMsg,
-    observation_id: observation.id,
-    observation_version: observation.current_version,
+    observation_id: swarm.id,
+    observation_version: swarm.current_version,
   };
   insertRow(env, bqRow).catch((err) => {
     console.error('BigQuery insert exception:', err);
@@ -627,8 +627,8 @@ async function runSingleModel(
     : { modelId, success: true, latencyMs, response: responseContent ?? undefined };
 }
 
-// Create new observation and stream results as each model completes (requires API key)
-api.post('/observations/stream', async (c) => {
+// Create new swarm and stream results as each model completes (requires API key)
+api.post('/swarms/stream', async (c) => {
   // Validate Bearer token
   const authHeader = c.req.header('Authorization');
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
@@ -673,8 +673,8 @@ api.post('/observations/stream', async (c) => {
     promptText = `${promptText}\n\nLimit your response to ${body.word_limit} words.`;
   }
 
-  // Create observation first
-  const { observation } = await createObservation(c.env.DB, {
+  // Create swarm first
+  const { swarm } = await createSwarm(c.env.DB, {
     prompt_text: promptText,
     display_name: body.display_name,
     model_ids: body.model_ids,
@@ -692,9 +692,9 @@ api.post('/observations/stream', async (c) => {
     async start(controller) {
       const encoder = new TextEncoder();
 
-      // Send observation created event first
-      const obsEvent = `data: ${JSON.stringify({ type: 'observation', observation: { id: observation.id } })}\n\n`;
-      controller.enqueue(encoder.encode(obsEvent));
+      // Send swarm created event first
+      const swarmEvent = `data: ${JSON.stringify({ type: 'swarm', swarm: { id: swarm.id } })}\n\n`;
+      controller.enqueue(encoder.encode(swarmEvent));
 
       // Collect all results for D1 storage
       const allResults: Array<{ modelId: string; response?: string; error?: string; latencyMs: number; success: boolean }> = [];
@@ -704,7 +704,7 @@ api.post('/observations/stream', async (c) => {
         const result = await runSingleModel(
           c.env,
           c.env.DB,
-          { id: observation.id, prompt_text: promptText, current_version: 1 },
+          { id: swarm.id, prompt_text: promptText, current_version: 1 },
           modelId,
           promptId,
           collectedAt
@@ -730,8 +730,8 @@ api.post('/observations/stream', async (c) => {
       await Promise.all(modelPromises);
 
       // Store all results in D1
-      await createObservationRun(c.env.DB, observation.id, 1, allResults);
-      await updateObservationLastRunAt(c.env.DB, observation.id);
+      await createSwarmRun(c.env.DB, swarm.id, 1, allResults);
+      await updateSwarmLastRunAt(c.env.DB, swarm.id);
       await incrementRateLimit(c.env.DB, 'collect', modelIds.length);
 
       // Send done event
@@ -751,8 +751,8 @@ api.post('/observations/stream', async (c) => {
   });
 });
 
-// Create new observation and run immediately (requires API key)
-api.post('/observations', async (c) => {
+// Create new swarm and run immediately (requires API key) - non-streaming version
+api.post('/swarms', async (c) => {
   // Validate Bearer token
   const authHeader = c.req.header('Authorization');
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
@@ -792,7 +792,7 @@ api.post('/observations', async (c) => {
   }
 
   try {
-    const { observation } = await createObservation(c.env.DB, {
+    const { swarm } = await createSwarm(c.env.DB, {
       prompt_text: promptText,
       display_name: body.display_name,
       model_ids: body.model_ids,
@@ -801,17 +801,17 @@ api.post('/observations', async (c) => {
       cron_expression: body.cron_expression,
     });
 
-    // Run observation immediately and wait for results
-    const runResult = await runObservationInternal(c.env, c.env.DB, observation.id);
+    // Run swarm immediately and wait for results
+    const runResult = await runSwarmInternal(c.env, c.env.DB, swarm.id);
 
-    const observationWithDetails = await getObservation(c.env.DB, observation.id);
-    const tags = await getObservationTags(c.env.DB, observation.id);
-    const modelIds = await getObservationVersionModels(c.env.DB, observation.id);
+    const swarmWithDetails = await getSwarm(c.env.DB, swarm.id);
+    const tags = await getSwarmTags(c.env.DB, swarm.id);
+    const modelIds = await getSwarmVersionModels(c.env.DB, swarm.id);
 
     return c.json(
       {
-        observation: {
-          ...observationWithDetails,
+        swarm: {
+          ...swarmWithDetails,
           tags,
           models: modelIds.map((id) => ({ id })),
         },
@@ -821,14 +821,14 @@ api.post('/observations', async (c) => {
       201
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to create observation';
-    console.error('Observation creation failed:', err);
+    const message = err instanceof Error ? err.message : 'Failed to create swarm';
+    console.error('Swarm creation failed:', err);
     return c.json({ error: message }, 500);
   }
 });
 
-// Update observation (creates new version if models/schedule change) - requires API key
-api.put('/observations/:id', async (c) => {
+// Update swarm (creates new version if models/schedule change) - requires API key
+api.put('/swarms/:id', async (c) => {
   // Validate Bearer token
   const authHeader = c.req.header('Authorization');
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
@@ -856,58 +856,58 @@ api.put('/observations/:id', async (c) => {
     is_paused?: boolean;
   }>();
 
-  const { observation, new_version } = await updateObservation(c.env.DB, id, body);
-  if (!observation) {
-    return c.json({ error: 'Observation not found' }, 404);
+  const { swarm, new_version } = await updateSwarm(c.env.DB, id, body);
+  if (!swarm) {
+    return c.json({ error: 'Swarm not found' }, 404);
   }
 
   // Get tags for response
-  const tags = await getObservationTags(c.env.DB, id);
+  const tags = await getSwarmTags(c.env.DB, id);
 
-  return c.json({ observation: { ...observation, tags }, new_version });
+  return c.json({ swarm: { ...swarm, tags }, new_version });
 });
 
-// Delete observation (soft-delete: sets disabled flag)
-api.delete('/observations/:id', async (c) => {
+// Delete swarm (soft-delete: sets disabled flag)
+api.delete('/swarms/:id', async (c) => {
   const { id } = c.req.param();
-  const deleted = await deleteObservation(c.env.DB, id);
+  const deleted = await deleteSwarm(c.env.DB, id);
   if (!deleted) {
-    return c.json({ error: 'Observation not found' }, 404);
+    return c.json({ error: 'Swarm not found' }, 404);
   }
   return c.json({ success: true });
 });
 
-// Restore a disabled observation
-api.put('/observations/:id/restore', async (c) => {
+// Restore a disabled swarm
+api.put('/swarms/:id/restore', async (c) => {
   const { id } = c.req.param();
-  const restored = await restoreObservation(c.env.DB, id);
+  const restored = await restoreSwarm(c.env.DB, id);
   if (!restored) {
-    return c.json({ error: 'Observation not found' }, 404);
+    return c.json({ error: 'Swarm not found' }, 404);
   }
   return c.json({ success: true });
 });
 
-// Get responses for a specific observation (from D1 and BigQuery)
-api.get('/observations/:id/responses', async (c) => {
+// Get responses for a specific swarm (swarm history from D1 and BigQuery)
+api.get('/swarms/:id/responses', async (c) => {
   const { id } = c.req.param();
   const limitParam = c.req.query('limit');
   const limit = limitParam ? parseInt(limitParam, 10) : 50;
 
-  // Verify observation exists
-  const observation = await getObservation(c.env.DB, id);
-  if (!observation) {
-    return c.json({ error: 'Observation not found' }, 404);
+  // Verify swarm exists
+  const swarm = await getSwarm(c.env.DB, id);
+  if (!swarm) {
+    return c.json({ error: 'Swarm not found' }, 404);
   }
 
   // Get runs from D1 (immediate, no BigQuery streaming delay)
-  const runs = await getObservationRuns(c.env.DB, id, limit);
+  const runs = await getSwarmRuns(c.env.DB, id, limit);
 
   // Transform D1 runs to match expected format
   const d1Prompts = runs.map((run) => ({
     id: run.id,
-    prompt: observation.prompt_text,
+    prompt: swarm.prompt_text,
     collected_at: run.run_at,
-    source: 'observation',
+    source: 'swarm',
     responses: run.results.map((r) => ({
       id: r.id,
       model: r.model_name ?? r.model_id,
@@ -1289,18 +1289,18 @@ admin.post('/collections/:id/run', async (c) => {
   });
 });
 
-// Run an observation manually (protected + rate limited)
-admin.post('/observations/:id/run', async (c) => {
+// Run a swarm manually - Release the Swarm! (protected + rate limited)
+admin.post('/swarms/:id/run', async (c) => {
   const { id } = c.req.param();
 
-  const result = await runObservationInternal(c.env, c.env.DB, id);
+  const result = await runSwarmInternal(c.env, c.env.DB, id);
   if (!result.success) {
     const status = result.error?.includes('not found') ? 404 : result.error?.includes('rate limit') ? 429 : 400;
     return c.json({ error: result.error }, status);
   }
 
   return c.json({
-    observation_id: id,
+    swarm_id: id,
     results: result.results,
     successful: result.results?.filter((r) => r.success).length ?? 0,
     failed: result.results?.filter((r) => !r.success).length ?? 0,

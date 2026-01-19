@@ -3,14 +3,14 @@ import { Hono } from 'hono';
 import type { Env } from '../../src/types/env';
 
 // Mock the services
-vi.mock('../../src/services/observations', () => ({
-  createObservation: vi.fn(),
-  getObservation: vi.fn(),
-  getObservations: vi.fn(),
-  getObservationVersionModels: vi.fn(),
-  getObservationTags: vi.fn(),
-  updateObservationLastRunAt: vi.fn(),
-  createObservationRun: vi.fn(),
+vi.mock('../../src/services/swarms', () => ({
+  createSwarm: vi.fn(),
+  getSwarm: vi.fn(),
+  getSwarms: vi.fn(),
+  getSwarmVersionModels: vi.fn(),
+  getSwarmTags: vi.fn(),
+  updateSwarmLastRunAt: vi.fn(),
+  createSwarmRun: vi.fn(),
 }));
 
 vi.mock('../../src/services/storage', () => ({
@@ -38,12 +38,12 @@ vi.mock('../../src/services/bigquery', () => ({
   extractProductFamily: vi.fn().mockReturnValue('TestProduct'),
 }));
 
-// Create a test app that mirrors the actual observation creation route
+// Create a test app that mirrors the actual swarm creation route
 function createTestApp() {
   const app = new Hono<{ Bindings: Env }>();
 
   // Matches the actual implementation in src/routes/api.ts
-  app.post('/api/observations', async (c) => {
+  app.post('/api/swarms', async (c) => {
     // Validate Bearer token
     const authHeader = c.req.header('Authorization');
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
@@ -72,13 +72,13 @@ function createTestApp() {
     }
 
     // Mock successful creation
-    return c.json({ observation: { id: 'test-id', prompt_text: body.prompt_text }, created: true }, 201);
+    return c.json({ swarm: { id: 'test-id', prompt_text: body.prompt_text }, created: true }, 201);
   });
 
   return app;
 }
 
-describe('Observations API Routes', () => {
+describe('Swarms API Routes', () => {
   let app: ReturnType<typeof createTestApp>;
   const mockEnv = {
     ADMIN_API_KEY: 'test-api-key-12345',
@@ -100,9 +100,9 @@ describe('Observations API Routes', () => {
     vi.clearAllMocks();
   });
 
-  describe('POST /api/observations - Authentication', () => {
+  describe('POST /api/swarms - Authentication', () => {
     it('returns 500 when ADMIN_API_KEY is not configured', async () => {
-      const res = await app.request('/api/observations', {
+      const res = await app.request('/api/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -120,7 +120,7 @@ describe('Observations API Routes', () => {
     });
 
     it('returns 500 when ADMIN_API_KEY is empty string', async () => {
-      const res = await app.request('/api/observations', {
+      const res = await app.request('/api/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -138,7 +138,7 @@ describe('Observations API Routes', () => {
     });
 
     it('returns 401 with helpful message when Authorization header is missing', async () => {
-      const res = await app.request('/api/observations', {
+      const res = await app.request('/api/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -155,7 +155,7 @@ describe('Observations API Routes', () => {
     });
 
     it('returns 401 when API key is invalid', async () => {
-      const res = await app.request('/api/observations', {
+      const res = await app.request('/api/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -173,7 +173,7 @@ describe('Observations API Routes', () => {
     });
 
     it('returns 401 when using Basic auth instead of Bearer', async () => {
-      const res = await app.request('/api/observations', {
+      const res = await app.request('/api/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -190,8 +190,8 @@ describe('Observations API Routes', () => {
       expect(body.error).toBe('Missing API key - provide Authorization: Bearer <key> header');
     });
 
-    it('accepts valid API key and creates observation', async () => {
-      const res = await app.request('/api/observations', {
+    it('accepts valid API key and creates swarm', async () => {
+      const res = await app.request('/api/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -206,11 +206,11 @@ describe('Observations API Routes', () => {
       expect(res.status).toBe(201);
       const body = await res.json();
       expect(body.created).toBe(true);
-      expect(body.observation.prompt_text).toBe('Test prompt');
+      expect(body.swarm.prompt_text).toBe('Test prompt');
     });
 
     it('trims whitespace from API key before comparison', async () => {
-      const res = await app.request('/api/observations', {
+      const res = await app.request('/api/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -228,7 +228,7 @@ describe('Observations API Routes', () => {
     });
 
     it('handles API key with leading whitespace', async () => {
-      const res = await app.request('/api/observations', {
+      const res = await app.request('/api/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -244,9 +244,9 @@ describe('Observations API Routes', () => {
     });
   });
 
-  describe('POST /api/observations - Input Validation', () => {
+  describe('POST /api/swarms - Input Validation', () => {
     it('validates required fields after successful auth', async () => {
-      const res = await app.request('/api/observations', {
+      const res = await app.request('/api/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -261,7 +261,7 @@ describe('Observations API Routes', () => {
     });
 
     it('validates model_ids is non-empty', async () => {
-      const res = await app.request('/api/observations', {
+      const res = await app.request('/api/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -279,7 +279,7 @@ describe('Observations API Routes', () => {
     });
 
     it('validates prompt_text is present', async () => {
-      const res = await app.request('/api/observations', {
+      const res = await app.request('/api/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

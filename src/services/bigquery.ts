@@ -16,7 +16,7 @@ export interface BigQueryRow {
   id: string;
   prompt_id: string; // groups all responses from a single prompt submission
   collected_at: string; // ISO timestamp
-  source: 'collect' | 'prompt-lab' | 'collection' | 'observation'; // where the response came from
+  source: 'collect' | 'prompt-lab' | 'collection' | 'observation' | 'swarm'; // where the response came from
   company: string; // provider like "openai", "anthropic"
   product: string; // family like "gpt", "claude"
   model: string; // specific model like "gpt-4o"
@@ -1130,7 +1130,12 @@ export async function getObservationResponses(
       };
     }
 
-    const result = (await response.json()) as BigQueryQueryResponse;
+    const result = (await response.json()) as {
+      errors?: Array<{ message: string }>;
+      rows?: Array<{
+        f: Array<{ v: unknown }>;
+      }>;
+    };
 
     if (result.errors) {
       return {
