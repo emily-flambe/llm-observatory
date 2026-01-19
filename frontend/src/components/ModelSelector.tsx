@@ -32,6 +32,7 @@ export default function ModelSelector({
   const [sortBy, setSortBy] = useState<SortOption>('released_at');
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
   const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false);
+  const [groundedFilter, setGroundedFilter] = useState<'all' | 'web'>('all');
 
   // Get unique companies
   const allCompanies = useMemo(() => {
@@ -61,8 +62,13 @@ export default function ModelSelector({
       result = result.filter((m) => selectedCompanies.has(m.company));
     }
 
+    // Filter by grounded (Web) status
+    if (groundedFilter === 'web') {
+      result = result.filter((m) => m.grounded === 1);
+    }
+
     return result;
-  }, [models, searchFilter, selectedCompanies]);
+  }, [models, searchFilter, selectedCompanies, groundedFilter]);
 
   // Group filtered models by company and sort within groups
   const modelsByCompany = useMemo(() => {
@@ -206,6 +212,33 @@ export default function ModelSelector({
               </div>
             </>
           )}
+        </div>
+
+        {/* Grounded (Web) filter toggle */}
+        <div className="flex rounded-lg border border-border overflow-hidden text-sm">
+          <button
+            onClick={() => setGroundedFilter('all')}
+            className={`px-3 py-1.5 ${
+              groundedFilter === 'all'
+                ? 'bg-amber text-white'
+                : 'bg-white hover:bg-paper-dark'
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setGroundedFilter('web')}
+            className={`px-3 py-1.5 border-l border-border flex items-center gap-1 ${
+              groundedFilter === 'web'
+                ? 'bg-amber text-white'
+                : 'bg-white hover:bg-paper-dark'
+            }`}
+          >
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">
+              Web
+            </span>
+            only
+          </button>
         </div>
 
         {/* Sort dropdown */}
