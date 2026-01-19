@@ -330,8 +330,8 @@ export async function insertRow(
               success: row.success,
               collection_id: row.collection_id ?? null,
               collection_version: row.collection_version ?? null,
-              observation_id: row.observation_id ?? null,
-              observation_version: row.observation_version ?? null,
+              // Note: observation_id and observation_version are in the BigQueryRow type
+              // but not in the actual BigQuery schema, so we don't include them in inserts
             },
           },
         ],

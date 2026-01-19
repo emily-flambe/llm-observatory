@@ -445,13 +445,11 @@ async function runSwarmInternal(
       observation_id: swarm.id,
       observation_version: swarm.current_version,
     };
-    insertRow(env, bqRow).then((result) => {
-      if (!result.success) {
-        console.error('Failed to save swarm response to BigQuery:', result.error);
-      }
-    }).catch((err) => {
-      console.error('BigQuery insert exception:', err);
-    });
+    // Await the BigQuery insert to ensure it completes before worker terminates
+    const bqResult = await insertRow(env, bqRow);
+    if (!bqResult.success) {
+      console.error('Failed to save swarm response to BigQuery:', bqResult.error);
+    }
 
     return errorMsg
       ? ({ modelId, success: false, error: errorMsg } as const)
@@ -1214,8 +1212,6 @@ admin.get('/test-bigquery-insert', async (c) => {
     output_cost: null,
     error: null,
     success: true,
-    observation_id: null,
-    observation_version: null,
   };
 
   const result = await insertRow(c.env, testRow);
