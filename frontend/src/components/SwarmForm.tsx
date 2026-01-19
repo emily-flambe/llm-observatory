@@ -470,7 +470,7 @@ export default function SwarmForm({ editId }: SwarmFormProps) {
             <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-success text-sm flex items-center justify-between">
               <span>Swarm updated successfully.</span>
               <Link
-                to={`/observe/${createdSwarmId}`}
+                to={`/swarm/${createdSwarmId}`}
                 className="text-amber hover:text-amber-light font-medium"
               >
                 View Swarm &rarr;
@@ -745,7 +745,7 @@ export default function SwarmForm({ editId }: SwarmFormProps) {
             <h3 className="text-lg font-medium text-ink">Results</h3>
             {createdSwarmId && (
               <Link
-                to={`/observe/${createdSwarmId}`}
+                to={`/swarm/${createdSwarmId}`}
                 className="text-sm text-amber hover:text-amber-light"
               >
                 View Full Details &rarr;
