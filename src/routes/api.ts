@@ -33,6 +33,7 @@ import {
   deleteRowsBySearch,
   extractProductFamily,
   extractCompany,
+  getObservationResponsesById,
   type BigQueryRow,
 } from '../services/bigquery';
 import { requireAccess } from '../middleware/access';
@@ -886,7 +887,7 @@ api.put('/observations/:id/restore', async (c) => {
   return c.json({ success: true });
 });
 
-// Get responses for a specific observation (from BigQuery)
+// Get responses for a specific observation (from D1 and BigQuery)
 api.get('/observations/:id/responses', async (c) => {
   const { id } = c.req.param();
   const limitParam = c.req.query('limit');
@@ -901,8 +902,8 @@ api.get('/observations/:id/responses', async (c) => {
   // Get runs from D1 (immediate, no BigQuery streaming delay)
   const runs = await getObservationRuns(c.env.DB, id, limit);
 
-  // Transform to match expected format
-  const prompts = runs.map((run) => ({
+  // Transform D1 runs to match expected format
+  const d1Prompts = runs.map((run) => ({
     id: run.id,
     prompt: observation.prompt_text,
     collected_at: run.run_at,
@@ -920,7 +921,33 @@ api.get('/observations/:id/responses', async (c) => {
     })),
   }));
 
-  return c.json({ prompts });
+  // Also query BigQuery for historical data (runs before D1 storage was implemented)
+  // This ensures we don't lose data from before the observation_runs table existed
+  const bqResult = await getObservationResponsesById(c.env, id, { limit });
+
+  let allPrompts = d1Prompts;
+
+  if (bqResult.success && bqResult.data) {
+    // Get set of D1 prompt IDs to deduplicate
+    const d1PromptIds = new Set(d1Prompts.map((p) => p.id));
+
+    // Add BigQuery results that aren't already in D1
+    const uniqueBqPrompts = bqResult.data.filter((p) => !d1PromptIds.has(p.id));
+
+    // Combine and sort by collected_at descending
+    allPrompts = [...d1Prompts, ...uniqueBqPrompts].sort((a, b) => {
+      const dateA = new Date(a.collected_at).getTime();
+      const dateB = new Date(b.collected_at).getTime();
+      return dateB - dateA;
+    });
+
+    // Apply limit after combining
+    if (allPrompts.length > limit) {
+      allPrompts = allPrompts.slice(0, limit);
+    }
+  }
+
+  return c.json({ prompts: allPrompts });
 });
 
 // ==================== Prompt Templates ====================
