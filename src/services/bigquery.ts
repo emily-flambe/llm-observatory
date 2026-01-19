@@ -1411,6 +1411,86 @@ export async function deleteRowsBySearch(
 }
 
 /**
+ * Update swarm_id for records matching a prompt text
+ * Used to backfill swarm_id for existing records
+ */
+export async function updateSwarmIdByPrompt(
+  env: BigQueryEnv,
+  promptText: string,
+  swarmId: string
+): Promise<BigQueryResult<{ updatedRows: number }>> {
+  const tokenResult = await getAccessToken(env);
+  if (!tokenResult.success) {
+    return tokenResult;
+  }
+
+  const url = `https://bigquery.googleapis.com/bigquery/v2/projects/${env.BQ_PROJECT_ID}/queries`;
+
+  const query = `
+    UPDATE \`${env.BQ_PROJECT_ID}.${env.BQ_DATASET_ID}.${env.BQ_TABLE_ID}\`
+    SET swarm_id = @swarm_id
+    WHERE prompt = @prompt_text
+      AND source = 'swarm'
+      AND swarm_id IS NULL
+  `;
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${tokenResult.data}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query,
+        useLegacySql: false,
+        parameterMode: 'NAMED',
+        queryParameters: [
+          {
+            name: 'swarm_id',
+            parameterType: { type: 'STRING' },
+            parameterValue: { value: swarmId },
+          },
+          {
+            name: 'prompt_text',
+            parameterType: { type: 'STRING' },
+            parameterValue: { value: promptText },
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        success: false,
+        error: `BigQuery update failed: ${response.status} ${errorText}`,
+      };
+    }
+
+    const result = (await response.json()) as {
+      jobComplete: boolean;
+      numDmlAffectedRows?: string;
+    };
+
+    if (!result.jobComplete) {
+      return {
+        success: false,
+        error: 'BigQuery update did not complete synchronously',
+      };
+    }
+
+    return {
+      success: true,
+      data: { updatedRows: parseInt(result.numDmlAffectedRows || '0', 10) },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return { success: false, error: `BigQuery update failed: ${message}` };
+  }
+}
+
+/**
  * Clear the token cache (useful for testing or after errors)
  */
 export function clearTokenCache(): void {

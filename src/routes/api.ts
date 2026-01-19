@@ -34,6 +34,7 @@ import {
   extractProductFamily,
   extractCompany,
   getObservationResponsesById,
+  updateSwarmIdByPrompt,
   type BigQueryRow,
 } from '../services/bigquery';
 import { requireAccess } from '../middleware/access';
@@ -1251,6 +1252,38 @@ admin.post('/backfill-bigquery', async (c) => {
     totalInserted,
     totalFailed,
     errors,
+  });
+});
+
+// Update swarm_id in BigQuery for existing records
+admin.post('/update-swarm-ids', async (c) => {
+  const swarms = await getSwarms(c.env.DB, { includeDisabled: true });
+  let totalUpdated = 0;
+  const results: Array<{ swarmId: string; promptText: string; updatedRows: number; error?: string }> = [];
+
+  for (const swarm of swarms) {
+    const updateResult = await updateSwarmIdByPrompt(c.env, swarm.prompt_text, swarm.id);
+    if (updateResult.success) {
+      totalUpdated += updateResult.data.updatedRows;
+      results.push({
+        swarmId: swarm.id,
+        promptText: swarm.prompt_text.substring(0, 50) + '...',
+        updatedRows: updateResult.data.updatedRows,
+      });
+    } else {
+      results.push({
+        swarmId: swarm.id,
+        promptText: swarm.prompt_text.substring(0, 50) + '...',
+        updatedRows: 0,
+        error: updateResult.error,
+      });
+    }
+  }
+
+  return c.json({
+    swarmsProcessed: swarms.length,
+    totalUpdated,
+    results,
   });
 });
 
