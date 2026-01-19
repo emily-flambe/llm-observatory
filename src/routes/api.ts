@@ -1188,6 +1188,66 @@ admin.get('/rate-limits', async (c) => {
   return c.json(status);
 });
 
+// Backfill BigQuery from D1 swarm runs
+admin.post('/backfill-bigquery', async (c) => {
+  const swarms = await getSwarms(c.env.DB, { includeDisabled: true });
+  let totalInserted = 0;
+  let totalFailed = 0;
+  const errors: string[] = [];
+
+  for (const swarm of swarms) {
+    const runs = await getSwarmRuns(c.env.DB, swarm.id, 100);
+
+    for (const run of runs) {
+      // Generate a deterministic prompt_id from run.id so we can dedupe
+      const promptId = run.id;
+
+      for (const result of run.results) {
+        const bqRow: BigQueryRow = {
+          id: crypto.randomUUID(),
+          prompt_id: promptId,
+          collected_at: run.run_at,
+          source: 'swarm',
+          company: result.company || extractCompany(result.model_name || '', result.model_name || ''),
+          product: extractProductFamily(result.model_name || ''),
+          model: result.model_name || result.model_id,
+          topic_id: null,
+          topic_name: null,
+          prompt_template_id: null,
+          prompt_template_name: null,
+          prompt: swarm.prompt_text,
+          response: result.response,
+          reasoning_content: null,
+          latency_ms: result.latency_ms,
+          input_tokens: result.input_tokens || 0,
+          output_tokens: result.output_tokens || 0,
+          input_cost: null,
+          output_cost: null,
+          error: result.error,
+          success: result.success === 1,
+        };
+
+        const insertResult = await insertRow(c.env, bqRow);
+        if (insertResult.success) {
+          totalInserted++;
+        } else {
+          totalFailed++;
+          if (errors.length < 10) {
+            errors.push(`${swarm.id}/${run.id}: ${insertResult.error}`);
+          }
+        }
+      }
+    }
+  }
+
+  return c.json({
+    swarmsProcessed: swarms.length,
+    totalInserted,
+    totalFailed,
+    errors,
+  });
+});
+
 // Smoke test - verify all LLM APIs are working
 admin.get('/test-models', async (c) => {
   const models = await getModels(c.env.DB);
