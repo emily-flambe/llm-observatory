@@ -41,8 +41,9 @@ export default {
     }
 
     // Collection scheduler runs every minute (checks cron expressions)
+    // Pass scheduledTime to ensure cron matching uses the trigger time, not execution time
     ctx.waitUntil(
-      runScheduledCollections(env).then((result) => {
+      runScheduledCollections(env, scheduledTime).then((result) => {
         if (result.ran > 0) {
           console.log(`Scheduled collections: ran ${result.ran} of ${result.checked} collections`);
         }
@@ -50,8 +51,9 @@ export default {
     );
 
     // Observation scheduler runs every minute (checks cron expressions)
+    // Pass scheduledTime to ensure cron matching uses the trigger time, not execution time
     ctx.waitUntil(
-      runScheduledObservations(env).then((result) => {
+      runScheduledObservations(env, scheduledTime).then((result) => {
         if (result.ran > 0) {
           console.log(`Scheduled observations: ran ${result.ran} of ${result.checked} observations`);
         }
