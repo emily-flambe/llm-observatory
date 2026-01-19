@@ -76,8 +76,13 @@ function matchCronField(field: string, value: number): boolean {
 
 /**
  * Run all scheduled collections that are due
+ * @param env - Environment bindings
+ * @param scheduledTime - The time the cron trigger fired (not the execution time)
  */
-export async function runScheduledCollections(env: Env): Promise<{
+export async function runScheduledCollections(
+  env: Env,
+  scheduledTime: Date
+): Promise<{
   checked: number;
   ran: number;
   results: Array<{
@@ -87,7 +92,6 @@ export async function runScheduledCollections(env: Env): Promise<{
     error?: string;
   }>;
 }> {
-  const now = new Date();
   const collections = await getCollections(env.DB);
 
   const results: Array<{
@@ -105,8 +109,8 @@ export async function runScheduledCollections(env: Env): Promise<{
       continue;
     }
 
-    // Check if cron matches current time
-    if (!cronMatchesNow(collection.cron_expression, now)) {
+    // Check if cron matches the scheduled trigger time (not current execution time)
+    if (!cronMatchesNow(collection.cron_expression, scheduledTime)) {
       continue;
     }
 

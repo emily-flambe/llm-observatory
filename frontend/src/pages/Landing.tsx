@@ -169,23 +169,23 @@ export default function Landing() {
       </section>
 
       {/* Features */}
-      <section className="grid gap-4 sm:grid-cols-3">
-        <Link
-          to="/models"
-          className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
-        >
-          <h3 className="font-semibold text-ink mb-2">Models</h3>
-          <p className="text-sm text-ink-muted">
-            Explore supported LLM providers, model capabilities, and release dates.
-          </p>
-        </Link>
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Link
           to="/observe"
           className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
         >
-          <h3 className="font-semibold text-ink mb-2">Observe</h3>
+          <h3 className="font-semibold text-ink mb-2">Create</h3>
           <p className="text-sm text-ink-muted">
             Run prompts across models, save swarms, schedule recurring runs.
+          </p>
+        </Link>
+        <Link
+          to="/observe/manage"
+          className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
+        >
+          <h3 className="font-semibold text-ink mb-2">Manage</h3>
+          <p className="text-sm text-ink-muted">
+            View, edit, and manage your saved swarms.
           </p>
         </Link>
         <Link
@@ -194,7 +194,16 @@ export default function Landing() {
         >
           <h3 className="font-semibold text-ink mb-2">History</h3>
           <p className="text-sm text-ink-muted">
-            View and compare collected responses across models.
+            Browse and compare collected responses across models.
+          </p>
+        </Link>
+        <Link
+          to="/models"
+          className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
+        >
+          <h3 className="font-semibold text-ink mb-2">Models</h3>
+          <p className="text-sm text-ink-muted">
+            Explore supported LLM providers and model details.
           </p>
         </Link>
       </section>
