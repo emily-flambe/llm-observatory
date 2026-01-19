@@ -130,6 +130,7 @@ export function extractCompany(provider: string, modelName: string): string {
     cloudflare: 'Cloudflare',
     xai: 'xAI',
     deepseek: 'DeepSeek',
+    perplexity: 'Perplexity',
   };
 
   return providerMap[provider.toLowerCase()] ?? provider;

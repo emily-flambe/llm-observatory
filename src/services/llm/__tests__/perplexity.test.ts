@@ -269,5 +269,111 @@ describe('PerplexityProvider', () => {
 
       expect(mockFetch.mock.calls[0][1].headers.Authorization).toBe('Bearer test-api-key');
     });
+
+    it('sets return_related_questions to false', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'Response' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+        }),
+      });
+
+      await provider.complete({ prompt: 'Test' });
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body.return_related_questions).toBe(false);
+    });
+  });
+
+  describe('error handling', () => {
+    const provider = new PerplexityProvider('test-perplexity', 'sonar', 'test-api-key');
+
+    it('throws LLMError on network failure', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+      await expect(provider.complete({ prompt: 'Test' })).rejects.toThrow('Network error');
+    });
+
+    it('throws LLMError with statusCode on rate limit error', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        text: async () => 'Rate limit exceeded',
+      });
+
+      try {
+        await provider.complete({ prompt: 'Test' });
+        expect.fail('Should have thrown');
+      } catch (e) {
+        expect(e).toBeInstanceOf(LLMError);
+        expect((e as LLMError).statusCode).toBe(429);
+      }
+    });
+
+    it('throws LLMError when response content is null', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: null } }],
+          usage: { prompt_tokens: 10, completion_tokens: 0 },
+        }),
+      });
+
+      await expect(provider.complete({ prompt: 'Test' })).rejects.toThrow('empty response');
+    });
+  });
+
+  describe('citations fallback', () => {
+    const provider = new PerplexityProvider('test-perplexity', 'sonar', 'test-api-key');
+
+    it('uses citations array when search_results is empty', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'Response' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+          citations: ['https://example.com/1', 'https://example.com/2'],
+          search_results: [],
+        }),
+      });
+
+      const result = await provider.complete({ prompt: 'Test' });
+
+      expect(result.citations).toHaveLength(2);
+      expect(result.citations![0]).toEqual({ url: 'https://example.com/1' });
+      expect(result.citations![1]).toEqual({ url: 'https://example.com/2' });
+    });
+
+    it('prefers search_results over citations array', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'Response' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+          citations: ['https://example.com/fallback'],
+          search_results: [{ url: 'https://example.com/detailed', title: 'Detailed Source' }],
+        }),
+      });
+
+      const result = await provider.complete({ prompt: 'Test' });
+
+      expect(result.citations).toHaveLength(1);
+      expect(result.citations![0]).toEqual({ url: 'https://example.com/detailed', title: 'Detailed Source' });
+    });
+
+    it('handles missing citations and search_results', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'Response' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+        }),
+      });
+
+      const result = await provider.complete({ prompt: 'Test' });
+
+      expect(result.citations).toBeUndefined();
+    });
   });
 });

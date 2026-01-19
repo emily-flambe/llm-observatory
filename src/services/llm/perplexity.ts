@@ -5,6 +5,7 @@ interface PerplexitySearchResult {
   url: string;
   name?: string;
   title?: string;
+  snippet?: string;
 }
 
 interface PerplexityChatResponse {
@@ -18,6 +19,8 @@ interface PerplexityChatResponse {
     prompt_tokens: number;
     completion_tokens: number;
   };
+  // API returns both: citations is URL strings, search_results has full details
+  citations?: string[];
   search_results?: PerplexitySearchResult[];
 }
 
@@ -31,6 +34,8 @@ export class PerplexityProvider implements LLMProvider {
 
   async complete(request: LLMRequest): Promise<LLMResponse> {
     const maxTokens = request.maxTokens ?? 1024;
+    // Lower default temperature (0.2) for search-focused responses to reduce
+    // hallucination and provide more factual, source-backed answers
     const temperature = request.temperature ?? 0.2;
 
     const startTime = Date.now();
@@ -41,11 +46,12 @@ export class PerplexityProvider implements LLMProvider {
       messages: [{ role: 'user', content: request.prompt }],
       max_tokens: maxTokens,
       temperature,
+      return_related_questions: false,
     };
 
     // Configure search behavior based on grounded flag
     if (this.grounded) {
-      // Grounded: enable web search with medium context size
+      // Grounded: enable web search with medium context size (balanced cost/quality)
       requestBody.web_search_options = { search_context_size: 'medium' };
     } else {
       // Non-grounded: disable search, use only training data
@@ -78,9 +84,9 @@ export class PerplexityProvider implements LLMProvider {
       throw new LLMError('Perplexity returned empty response', 'perplexity');
     }
 
-    // Extract citations from search_results
+    // Extract citations - prefer search_results (has titles) over citations array (URLs only)
     const citations: Citation[] = [];
-    if (data.search_results) {
+    if (data.search_results && data.search_results.length > 0) {
       for (const result of data.search_results) {
         if (result.url) {
           citations.push({
@@ -88,6 +94,11 @@ export class PerplexityProvider implements LLMProvider {
             title: result.title || result.name,
           });
         }
+      }
+    } else if (data.citations && data.citations.length > 0) {
+      // Fallback to citations array (URL strings only, no titles)
+      for (const url of data.citations) {
+        citations.push({ url });
       }
     }
 
