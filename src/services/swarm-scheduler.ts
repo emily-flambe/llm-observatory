@@ -77,19 +77,20 @@ function matchCronField(field: string, value: number): boolean {
 
 /**
  * Convert schedule_type to cron expression if not custom
+ * Note: Default times (6:00 AM UTC) match the frontend defaults in SwarmForm.tsx
  */
 function getEffectiveCron(swarm: SwarmWithDetails): string | null {
   if (!swarm.schedule_type) return null;
   if (swarm.cron_expression) return swarm.cron_expression;
 
-  // Default schedules run at 9:00 AM UTC
+  // Default schedules run at 6:00 AM UTC (matches frontend defaults)
   switch (swarm.schedule_type) {
     case 'daily':
-      return '0 9 * * *';
+      return '0 6 * * *';
     case 'weekly':
-      return '0 9 * * 1'; // Monday at 9 AM
+      return '0 6 * * 1'; // Monday at 6 AM
     case 'monthly':
-      return '0 9 1 * *'; // 1st of month at 9 AM
+      return '0 6 1 * *'; // 1st of month at 6 AM
     default:
       return null;
   }
