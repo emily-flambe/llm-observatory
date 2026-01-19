@@ -321,13 +321,15 @@ api.delete('/tags/:id', async (c) => {
 // Get recent prompts from Prompt Lab
 api.get('/prompts', async (c) => {
   const limitParam = c.req.query('limit');
+  const offsetParam = c.req.query('offset');
   const search = c.req.query('search');
   const modelsParam = c.req.query('models'); // comma-separated
   const companiesParam = c.req.query('companies'); // comma-separated
   const topicsParam = c.req.query('topics'); // comma-separated
   const sourcesParam = c.req.query('sources'); // comma-separated: 'collection', 'prompt-lab'
   const showHiddenParam = c.req.query('showHidden'); // 'true' to include hidden swarms
-  const limit = limitParam ? parseInt(limitParam, 10) : 50;
+  const limit = limitParam ? parseInt(limitParam, 10) : 20;
+  const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
   const showHidden = showHiddenParam === 'true';
 
   // Parse comma-separated values into arrays
@@ -342,8 +344,10 @@ api.get('/prompts', async (c) => {
     excludeSwarmIds = await getHiddenSwarmIds(c.env.DB);
   }
 
+  // Request one extra to determine if there are more pages
   const result = await getRecentPrompts(c.env, {
-    limit,
+    limit: limit + 1,
+    offset,
     search: search || undefined,
     models,
     companies,
@@ -355,8 +359,12 @@ api.get('/prompts', async (c) => {
     return c.json({ error: result.error }, 500);
   }
 
+  // Check if there are more pages (we requested limit+1)
+  const allPrompts = result.data;
+  const hasMore = allPrompts.length > limit;
+  const prompts = hasMore ? allPrompts.slice(0, limit) : allPrompts;
+
   // For swarm records with null swarm_id, look up the swarm from D1 by prompt text
-  const prompts = result.data;
   const swarmRecordsNeedingLookup = prompts.filter(
     (p) => p.source === 'swarm' && !p.swarm_id
   );
@@ -382,7 +390,7 @@ api.get('/prompts', async (c) => {
     }
   }
 
-  return c.json({ prompts });
+  return c.json({ prompts, hasMore });
 });
 
 // ==================== Swarms ====================
