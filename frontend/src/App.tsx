@@ -248,7 +248,7 @@ function ManageSwarmCard({ swarm, onUpdate }: { swarm: Collection; onUpdate?: ()
           </div>
         </div>
         <Link
-          to={`/observe/${swarm.id}`}
+          to={`/swarm/${swarm.id}`}
           className="text-xs text-amber hover:text-amber-dark shrink-0"
         >
           View →
@@ -436,7 +436,7 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
             </span>
           </div>
           <Link
-            to={`/observe?prompt=${encodeURIComponent(query.prompt)}`}
+            to={`/swarm?prompt=${encodeURIComponent(query.prompt)}`}
             className="text-xs text-amber hover:text-amber-dark"
           >
             Manage
@@ -748,7 +748,7 @@ function PromptsContent({
         <div className="text-center py-20 text-ink-muted">
           {hasActiveFilters || filters.search
             ? 'No prompts match the current filters'
-            : 'No prompts yet. Use the Observe page to run prompts.'}
+            : 'No prompts yet. Use the Create page to run prompts.'}
         </div>
       ) : (
         <div className="space-y-4">
@@ -1027,7 +1027,7 @@ function SwarmDetailPage() {
         <div className="text-center py-20">
           <div className="text-error mb-2">Failed to load swarm</div>
           <div className="text-sm text-ink-muted">{error}</div>
-          <Link to="/observe/manage" className="text-amber hover:text-amber-dark text-sm mt-4 inline-block">
+          <Link to="/swarm/manage" className="text-amber hover:text-amber-dark text-sm mt-4 inline-block">
             ← Back to Manage
           </Link>
         </div>
@@ -1052,7 +1052,7 @@ function SwarmDetailPage() {
   return (
     <div>
       <div className="mb-6">
-        <Link to="/observe/manage" className="text-sm text-amber hover:text-amber-dark mb-2 inline-block">
+        <Link to="/swarm/manage" className="text-sm text-amber hover:text-amber-dark mb-2 inline-block">
           ← Back to Manage
         </Link>
         <div className="flex items-start justify-between gap-4">
@@ -1104,13 +1104,13 @@ function SwarmDetailPage() {
                 </button>
               )}
               <Link
-                to={`/observe/${swarm.id}/edit`}
+                to={`/swarm/${swarm.id}/edit`}
                 className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-white"
               >
                 Edit
               </Link>
               <Link
-                to={`/observe?${new URLSearchParams({
+                to={`/swarm?${new URLSearchParams({
                   prompt: swarm.prompt_text,
                   models: (swarm as CollectionDetail).models?.map((m) => m.id).join(',') || '',
                   ...(swarm.display_name ? { name: `${swarm.display_name} (Copy)` } : {}),
@@ -1251,7 +1251,7 @@ function Layout({ children }: { children: React.ReactNode }) {
             </Link>
             <nav className="flex border border-border rounded-lg overflow-hidden">
               <NavLink
-                to="/observe"
+                to="/swarm"
                 end
                 className={({ isActive }) =>
                   `px-4 py-2 text-sm font-medium transition-colors ${
@@ -1264,12 +1264,12 @@ function Layout({ children }: { children: React.ReactNode }) {
                 Create
               </NavLink>
               <NavLink
-                to="/observe/manage"
+                to="/swarm/manage"
                 className={({ isActive }) => {
                   // Also highlight for observation detail and edit pages
                   const pathname = window.location.pathname;
-                  const isManageRoute = pathname === '/observe/manage' ||
-                    (pathname.startsWith('/observe/') && pathname !== '/observe');
+                  const isManageRoute = pathname === '/swarm/manage' ||
+                    (pathname.startsWith('/swarm/') && pathname !== '/swarm');
                   return `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
                     isActive || isManageRoute
                       ? 'bg-amber text-white'
@@ -1339,11 +1339,11 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/models" element={<ExploreModels />} />
-          {/* Observe routes */}
-          <Route path="/observe" element={<ObserveNewPage />} />
-          <Route path="/observe/manage" element={<ObserveManagePage />} />
-          <Route path="/observe/:id" element={<SwarmDetailPage />} />
-          <Route path="/observe/:id/edit" element={<ObserveEditPage />} />
+          {/* Swarm routes */}
+          <Route path="/swarm" element={<ObserveNewPage />} />
+          <Route path="/swarm/manage" element={<ObserveManagePage />} />
+          <Route path="/swarm/:id" element={<SwarmDetailPage />} />
+          <Route path="/swarm/:id/edit" element={<ObserveEditPage />} />
           {/* History routes */}
           <Route path="/history" element={<Navigate to="/history/prompts" replace />} />
           <Route path="/history/prompts" element={<HistoryPromptsPage />} />
