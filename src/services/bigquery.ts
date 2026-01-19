@@ -689,7 +689,7 @@ export interface PromptLabQuery {
  */
 export async function getRecentPrompts(
   env: BigQueryEnv,
-  options: { limit?: number; search?: string; models?: string[]; companies?: string[]; topics?: string[]; sources?: string[] } = {}
+  options: { limit?: number; search?: string; models?: string[]; companies?: string[]; topics?: string[]; sources?: string[]; excludeSwarmIds?: string[] } = {}
 ): Promise<BigQueryResult<PromptLabQuery[]>> {
   const tokenResult = await getAccessToken(env);
   if (!tokenResult.success) {
@@ -818,6 +818,20 @@ export async function getRecentPrompts(
         name: `source_${i}`,
         parameterType: { type: 'STRING' },
         parameterValue: { value: source },
+      });
+    });
+  }
+
+  // Exclude prompts from hidden swarms
+  if (options.excludeSwarmIds && options.excludeSwarmIds.length > 0) {
+    const excludeConditions = options.excludeSwarmIds.map((_, i) => `swarm_id != @exclude_swarm_${i}`).join(' AND ');
+    // Also allow records where swarm_id is NULL (non-swarm records like prompt-lab)
+    query += ` AND (swarm_id IS NULL OR (${excludeConditions}))`;
+    options.excludeSwarmIds.forEach((swarmId, i) => {
+      queryParameters.push({
+        name: `exclude_swarm_${i}`,
+        parameterType: { type: 'STRING' },
+        parameterValue: { value: swarmId },
       });
     });
   }

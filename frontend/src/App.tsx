@@ -503,6 +503,7 @@ interface FilterParams {
   companies: string[];
   topics: string[];
   sources: string[];
+  showHidden: boolean;
 }
 
 // Multi-select dropdown component
@@ -616,6 +617,7 @@ function PromptsContent({
     if (filters.topics.length > 0) params.set('topics', filters.topics.join(','));
     // Only filter by source when exactly one is selected (both or neither means show all)
     if (filters.sources.length === 1) params.set('sources', filters.sources.join(','));
+    if (filters.showHidden) params.set('showHidden', 'true');
 
     fetch(`/api/prompts?${params}`)
       .then(async (res) => {
@@ -632,7 +634,7 @@ function PromptsContent({
         setPrompts([]);
       })
       .finally(() => setLoading(false));
-  }, [filters.search, filters.models, filters.companies, filters.topics, filters.sources]);
+  }, [filters.search, filters.models, filters.companies, filters.topics, filters.sources, filters.showHidden]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -680,6 +682,20 @@ function PromptsContent({
             Clear filters
           </button>
         )}
+
+        {/* Show hidden swarms toggle */}
+        <div className="flex items-center gap-2 ml-auto">
+          <input
+            type="checkbox"
+            id="showHidden"
+            checked={filters.showHidden}
+            onChange={(e) => onFilterChange({ showHidden: e.target.checked })}
+            className="rounded border-border text-amber focus:ring-amber"
+          />
+          <label htmlFor="showHidden" className="text-sm text-ink-muted whitespace-nowrap">
+            Show hidden swarms
+          </label>
+        </div>
       </div>
 
       {/* Search */}
@@ -751,6 +767,7 @@ function HistoryPromptsPage() {
     companies: parseArray(searchParams.get('companies')),
     topics: parseArray(searchParams.get('topics')),
     sources: [], // No source filtering - show all
+    showHidden: searchParams.get('showHidden') === 'true',
   };
 
   const handleFilterChange = (newFilters: Partial<FilterParams>) => {
@@ -760,11 +777,12 @@ function HistoryPromptsPage() {
     if (updated.models.length > 0) params.set('models', updated.models.join(','));
     if (updated.companies.length > 0) params.set('companies', updated.companies.join(','));
     if (updated.topics.length > 0) params.set('topics', updated.topics.join(','));
+    if (updated.showHidden) params.set('showHidden', 'true');
     setSearchParams(params);
   };
 
   // Create a key from all filter params to reset component state when any filter changes
-  const filterKey = `${filters.search}-${filters.models.join(',')}-${filters.companies.join(',')}-${filters.topics.join(',')}`;
+  const filterKey = `${filters.search}-${filters.models.join(',')}-${filters.companies.join(',')}-${filters.topics.join(',')}-${filters.showHidden}`;
 
   return (
     <div>

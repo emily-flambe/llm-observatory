@@ -54,6 +54,7 @@ import {
   updateSwarmLastRunAt,
   createSwarmRun,
   getSwarmRuns,
+  getHiddenSwarmIds,
 } from '../services/swarms';
 
 type Variables = {
@@ -325,13 +326,21 @@ api.get('/prompts', async (c) => {
   const companiesParam = c.req.query('companies'); // comma-separated
   const topicsParam = c.req.query('topics'); // comma-separated
   const sourcesParam = c.req.query('sources'); // comma-separated: 'collection', 'prompt-lab'
+  const showHiddenParam = c.req.query('showHidden'); // 'true' to include hidden swarms
   const limit = limitParam ? parseInt(limitParam, 10) : 50;
+  const showHidden = showHiddenParam === 'true';
 
   // Parse comma-separated values into arrays
   const models = modelsParam ? modelsParam.split(',').filter(Boolean) : undefined;
   const companies = companiesParam ? companiesParam.split(',').filter(Boolean) : undefined;
   const topics = topicsParam ? topicsParam.split(',').filter(Boolean) : undefined;
   const sources = sourcesParam ? sourcesParam.split(',').filter(Boolean) : undefined;
+
+  // Get swarm IDs that should be hidden from history (unless showHidden is true)
+  let excludeSwarmIds: string[] | undefined;
+  if (!showHidden) {
+    excludeSwarmIds = await getHiddenSwarmIds(c.env.DB);
+  }
 
   const result = await getRecentPrompts(c.env, {
     limit,
@@ -340,6 +349,7 @@ api.get('/prompts', async (c) => {
     companies,
     topics,
     sources,
+    excludeSwarmIds,
   });
   if (!result.success) {
     return c.json({ error: result.error }, 500);
@@ -881,6 +891,7 @@ api.put('/swarms/:id', async (c) => {
     schedule_type?: 'daily' | 'weekly' | 'monthly' | 'custom' | null;
     cron_expression?: string | null;
     is_paused?: boolean;
+    hide_from_history?: boolean;
   }>();
 
   const { swarm, new_version } = await updateSwarm(c.env.DB, id, body);

@@ -6,6 +6,7 @@ export interface Swarm {
   prompt_text: string;
   display_name: string | null;
   disabled: number;
+  hide_from_history: number;
   created_at: string;
   last_run_at: string | null;
 }
@@ -27,6 +28,7 @@ export interface SwarmWithDetails extends Swarm {
   is_paused: number;
   model_count: number;
   tags?: Array<{ id: string; name: string; color: string | null }>;
+  hide_from_history: number;
 }
 
 export interface SwarmTag {
@@ -51,6 +53,7 @@ export interface UpdateSwarmInput {
   schedule_type?: 'daily' | 'weekly' | 'monthly' | 'custom' | null;
   cron_expression?: string | null;
   is_paused?: boolean;
+  hide_from_history?: boolean;
 }
 
 /**
@@ -111,6 +114,7 @@ export async function createSwarm(
     prompt_text: input.prompt_text,
     display_name: input.display_name ?? null,
     disabled: 0,
+    hide_from_history: 0,
     created_at: now,
     last_run_at: null,
   };
@@ -139,7 +143,7 @@ export async function getSwarm(
     .prepare(
       `
       SELECT
-        o.id, o.prompt_text, o.display_name, o.disabled, o.created_at, o.last_run_at,
+        o.id, o.prompt_text, o.display_name, o.disabled, o.hide_from_history, o.created_at, o.last_run_at,
         ov.version as current_version, ov.schedule_type, ov.cron_expression, ov.is_paused,
         (SELECT COUNT(*) FROM observation_version_models ovm WHERE ovm.observation_version_id = ov.id) as model_count
       FROM observations o
@@ -166,7 +170,7 @@ export async function getSwarms(
     .prepare(
       `
       SELECT
-        o.id, o.prompt_text, o.display_name, o.disabled, o.created_at, o.last_run_at,
+        o.id, o.prompt_text, o.display_name, o.disabled, o.hide_from_history, o.created_at, o.last_run_at,
         ov.version as current_version, ov.schedule_type, ov.cron_expression, ov.is_paused,
         (SELECT COUNT(*) FROM observation_version_models ovm WHERE ovm.observation_version_id = ov.id) as model_count
       FROM observations o
@@ -256,6 +260,14 @@ export async function updateSwarm(
     await db
       .prepare('UPDATE observations SET display_name = ? WHERE id = ?')
       .bind(updates.display_name, id)
+      .run();
+  }
+
+  // Update hide_from_history flag if provided
+  if (updates.hide_from_history !== undefined) {
+    await db
+      .prepare('UPDATE observations SET hide_from_history = ? WHERE id = ?')
+      .bind(updates.hide_from_history ? 1 : 0, id)
       .run();
   }
 
@@ -353,6 +365,16 @@ export async function restoreSwarm(db: D1Database, id: string): Promise<boolean>
 export async function updateSwarmLastRunAt(db: D1Database, id: string): Promise<void> {
   const now = new Date().toISOString();
   await db.prepare('UPDATE observations SET last_run_at = ? WHERE id = ?').bind(now, id).run();
+}
+
+/**
+ * Get all swarm IDs that should be hidden from history
+ */
+export async function getHiddenSwarmIds(db: D1Database): Promise<string[]> {
+  const result = await db
+    .prepare('SELECT id FROM observations WHERE hide_from_history = 1')
+    .all<{ id: string }>();
+  return result.results.map((r) => r.id);
 }
 
 // ==================== Swarm Runs ====================
