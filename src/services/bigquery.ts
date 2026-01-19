@@ -689,7 +689,7 @@ export interface PromptLabQuery {
  */
 export async function getRecentPrompts(
   env: BigQueryEnv,
-  options: { limit?: number; search?: string; models?: string[]; companies?: string[]; topics?: string[]; sources?: string[] } = {}
+  options: { limit?: number; offset?: number; search?: string; models?: string[]; companies?: string[]; topics?: string[]; sources?: string[] } = {}
 ): Promise<BigQueryResult<PromptLabQuery[]>> {
   const tokenResult = await getAccessToken(env);
   if (!tokenResult.success) {
@@ -822,16 +822,25 @@ export async function getRecentPrompts(
     });
   }
 
+  const offset = options.offset ?? 0;
+
   query += `
     GROUP BY group_id
     ORDER BY collected_at DESC
     LIMIT @limit
+    OFFSET @offset
   `;
 
   queryParameters.push({
     name: 'limit',
     parameterType: { type: 'INT64' },
     parameterValue: { value: String(limit) },
+  });
+
+  queryParameters.push({
+    name: 'offset',
+    parameterType: { type: 'INT64' },
+    parameterValue: { value: String(offset) },
   });
 
   try {
