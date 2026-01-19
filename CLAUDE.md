@@ -10,6 +10,21 @@ Cloudflare Workers app comparing LLM responses across providers.
 
 **NEVER use `wrangler delete`.** If you think you need to delete something, ask the user first.
 
+## Secrets Management
+
+Secrets are stored in `.dev.vars` (gitignored) and synced to Cloudflare using:
+
+```bash
+npx wrangler secret bulk .dev.vars   # Upload ALL secrets from .dev.vars
+```
+
+This is the preferred method - it reads the `.dev.vars` file and uploads all secrets at once, similar to Terraform managing AWS secrets.
+
+Required secrets (defined in `.dev.vars`):
+- `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `XAI_API_KEY`, `DEEPSEEK_API_KEY`
+- `ADMIN_API_KEY` - for authenticated API operations
+- `BQ_SERVICE_ACCOUNT_EMAIL`, `BQ_PRIVATE_KEY` - for BigQuery access
+
 ## Commands
 
 ```bash
