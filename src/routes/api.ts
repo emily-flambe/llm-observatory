@@ -1188,39 +1188,6 @@ admin.get('/rate-limits', async (c) => {
   return c.json(status);
 });
 
-// Debug endpoint to test BigQuery insert
-admin.get('/test-bigquery-insert', async (c) => {
-  const testRow: BigQueryRow = {
-    id: `test-${Date.now()}`,
-    prompt_id: `test-prompt-${Date.now()}`,
-    collected_at: new Date().toISOString(),
-    source: 'swarm',
-    company: 'test',
-    product: 'test',
-    model: 'test-model',
-    topic_id: null,
-    topic_name: null,
-    prompt_template_id: null,
-    prompt_template_name: null,
-    prompt: 'Test prompt for BigQuery insert debug',
-    response: 'Test response',
-    reasoning_content: null,
-    latency_ms: 100,
-    input_tokens: 10,
-    output_tokens: 20,
-    input_cost: null,
-    output_cost: null,
-    error: null,
-    success: true,
-  };
-
-  const result = await insertRow(c.env, testRow);
-  return c.json({
-    testRow,
-    insertResult: result,
-  });
-});
-
 // Smoke test - verify all LLM APIs are working
 admin.get('/test-models', async (c) => {
   const models = await getModels(c.env.DB);
