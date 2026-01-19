@@ -16,42 +16,9 @@ import { parseBigQueryTimestamp } from './utils/date';
 import { renderMarkdown } from './utils/markdown';
 import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection, CollectionDetail } from './types';
 
-function ObserveNavTabs() {
-  const pathname = window.location.pathname;
-  const isManageActive = pathname === '/observe/manage' ||
-    (pathname.startsWith('/observe/') && pathname !== '/observe' && !pathname.match(/^\/observe\/[^/]+$/));
-
-  return (
-    <div className="flex gap-1 mb-6 border-b border-border">
-      <NavLink
-        to="/observe"
-        end
-        className={({ isActive }) =>
-          `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
-            isActive ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
-          }`
-        }
-      >
-        New
-      </NavLink>
-      <NavLink
-        to="/observe/manage"
-        className={() =>
-          `px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
-            isManageActive ? 'border-amber text-amber' : 'border-transparent text-ink-muted hover:text-ink'
-          }`
-        }
-      >
-        Manage
-      </NavLink>
-    </div>
-  );
-}
-
 function ObserveNewPage() {
   return (
     <div>
-      <ObserveNavTabs />
       <ObservationForm />
     </div>
   );
@@ -61,7 +28,6 @@ function ObserveEditPage() {
   const { id } = useParams<{ id: string }>();
   return (
     <div>
-      <ObserveNavTabs />
       <ObservationForm editId={id} />
     </div>
   );
@@ -409,8 +375,6 @@ function ObserveManagePage() {
 
   return (
     <div>
-      <ObserveNavTabs />
-
       {/* Show disabled toggle */}
       <div className="mb-4">
         <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
@@ -433,7 +397,7 @@ function ObserveManagePage() {
         </div>
       ) : observations.length === 0 ? (
         <div className="text-center py-20 text-ink-muted">
-          No observations yet. Use the New tab to create your first observation.
+          No observations yet. Use Create to make your first observation.
         </div>
       ) : (
         <div className="space-y-4">
@@ -1052,7 +1016,6 @@ function ObservationDetailPage() {
   if (loading) {
     return (
       <div>
-        <ObserveNavTabs />
         <div className="text-center py-20 text-ink-muted">Loading observation...</div>
       </div>
     );
@@ -1061,7 +1024,6 @@ function ObservationDetailPage() {
   if (error || !observation) {
     return (
       <div>
-        <ObserveNavTabs />
         <div className="text-center py-20">
           <div className="text-error mb-2">Failed to load observation</div>
           <div className="text-sm text-ink-muted">{error}</div>
@@ -1089,8 +1051,6 @@ function ObservationDetailPage() {
 
   return (
     <div>
-      <ObserveNavTabs />
-
       <div className="mb-6">
         <Link to="/observe/manage" className="text-sm text-amber hover:text-amber-dark mb-2 inline-block">
           ← Back to Manage
@@ -1291,7 +1251,7 @@ function Layout({ children }: { children: React.ReactNode }) {
             </div>
             <nav className="flex border border-border rounded-lg overflow-hidden">
               <NavLink
-                to="/"
+                to="/observe"
                 end
                 className={({ isActive }) =>
                   `px-4 py-2 text-sm font-medium transition-colors ${
@@ -1301,31 +1261,23 @@ function Layout({ children }: { children: React.ReactNode }) {
                   }`
                 }
               >
-                Home
+                Create
               </NavLink>
               <NavLink
-                to="/models"
-                className={({ isActive }) =>
-                  `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
-                    isActive
+                to="/observe/manage"
+                className={({ isActive }) => {
+                  // Also highlight for observation detail and edit pages
+                  const pathname = window.location.pathname;
+                  const isManageRoute = pathname === '/observe/manage' ||
+                    (pathname.startsWith('/observe/') && pathname !== '/observe');
+                  return `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
+                    isActive || isManageRoute
                       ? 'bg-amber text-white'
                       : 'bg-white text-ink-light hover:bg-paper-dark'
-                  }`
-                }
+                  }`;
+                }}
               >
-                Models
-              </NavLink>
-              <NavLink
-                to="/observe"
-                className={({ isActive }) =>
-                  `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
-                    isActive
-                      ? 'bg-amber text-white'
-                      : 'bg-white text-ink-light hover:bg-paper-dark'
-                  }`
-                }
-              >
-                Observe
+                Manage
               </NavLink>
               <NavLink
                 to="/history"
@@ -1340,6 +1292,18 @@ function Layout({ children }: { children: React.ReactNode }) {
                 }}
               >
                 History
+              </NavLink>
+              <NavLink
+                to="/models"
+                className={({ isActive }) =>
+                  `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
+                    isActive
+                      ? 'bg-amber text-white'
+                      : 'bg-white text-ink-light hover:bg-paper-dark'
+                  }`
+                }
+              >
+                Models
               </NavLink>
             </nav>
             <a
