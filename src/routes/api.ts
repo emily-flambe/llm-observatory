@@ -29,6 +29,8 @@ import {
   getTopicsFromBigQuery,
   getRecentPrompts,
   getCollectionResponses,
+  getObservationResponsesById,
+  getObservationResponses,
   insertRow,
   deleteRowsBySearch,
   extractProductFamily,
@@ -886,7 +888,7 @@ api.put('/observations/:id/restore', async (c) => {
   return c.json({ success: true });
 });
 
-// Get responses for a specific observation (from BigQuery)
+// Get responses for a specific observation (from D1 + BigQuery)
 api.get('/observations/:id/responses', async (c) => {
   const { id } = c.req.param();
   const limitParam = c.req.query('limit');
@@ -899,10 +901,10 @@ api.get('/observations/:id/responses', async (c) => {
   }
 
   // Get runs from D1 (immediate, no BigQuery streaming delay)
-  const runs = await getObservationRuns(c.env.DB, id, limit);
+  const d1Runs = await getObservationRuns(c.env.DB, id, limit);
 
-  // Transform to match expected format
-  const prompts = runs.map((run) => ({
+  // Transform D1 data to match expected format
+  const d1Prompts = d1Runs.map((run) => ({
     id: run.id,
     prompt: observation.prompt_text,
     collected_at: run.run_at,
@@ -920,7 +922,51 @@ api.get('/observations/:id/responses', async (c) => {
     })),
   }));
 
-  return c.json({ prompts });
+  // Also get historical data from BigQuery by observation_id (post-1/18 runs)
+  const bqByIdResult = await getObservationResponsesById(c.env, id, { limit });
+
+  // Also get legacy data from BigQuery by prompt text (pre-1/18 runs with source='collection')
+  const bqByPromptResult = await getObservationResponses(c.env, observation.prompt_text, { limit });
+
+  // Merge all data sources, deduplicating by collected_at timestamp
+  // Priority: D1 > BQ by ID > BQ by prompt text
+  const seenTimestamps = new Set<string>();
+
+  // Add D1 data first (highest priority)
+  const mergedPrompts = [...d1Prompts];
+  d1Prompts.forEach((p) => seenTimestamps.add(p.collected_at));
+
+  // Add BigQuery data by observation_id
+  if (bqByIdResult.success) {
+    for (const p of bqByIdResult.data) {
+      if (!seenTimestamps.has(p.collected_at)) {
+        mergedPrompts.push(p);
+        seenTimestamps.add(p.collected_at);
+      }
+    }
+  }
+
+  // Add legacy BigQuery data by prompt text (for pre-migration runs)
+  if (bqByPromptResult.success) {
+    for (const p of bqByPromptResult.data) {
+      if (!seenTimestamps.has(p.collected_at)) {
+        mergedPrompts.push(p);
+        seenTimestamps.add(p.collected_at);
+      }
+    }
+  }
+
+  // Sort by collected_at descending
+  const sortedPrompts = mergedPrompts.sort((a, b) => {
+    const dateA = new Date(a.collected_at).getTime();
+    const dateB = new Date(b.collected_at).getTime();
+    return dateB - dateA;
+  });
+
+  // Apply limit after merging
+  const limitedPrompts = sortedPrompts.slice(0, limit);
+
+  return c.json({ prompts: limitedPrompts });
 });
 
 // ==================== Prompt Templates ====================
