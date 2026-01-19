@@ -416,27 +416,29 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
 
   return (
     <div className="bg-white border border-border rounded-lg p-4">
-      <div className="space-y-1">
-        {/* Row 1: Prompt + Expand */}
-        <div className="flex items-start justify-between gap-4">
-          <p className="text-sm text-ink line-clamp-2 flex-1 min-w-0">{query.prompt}</p>
+      <div className="flex justify-between gap-4">
+        {/* Left: Prompt and metadata */}
+        <div className="space-y-1 flex-1 min-w-0">
+          <p className="text-sm text-ink line-clamp-2">{query.prompt}</p>
+          <div className="flex items-center gap-3 text-xs text-ink-muted">
+            <span>{date.toLocaleDateString()}</span>
+            <span>
+              {query.responses.length} model{query.responses.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+        </div>
+        {/* Right: Expand and View Swarm */}
+        <div className="flex flex-col items-end gap-1 shrink-0">
           <button
             onClick={() => setExpanded(!expanded)}
-            className="text-xs text-amber hover:text-amber-dark shrink-0"
+            className="text-xs text-amber hover:text-amber-dark"
           >
             {expanded ? 'Collapse' : 'Expand'}
           </button>
-        </div>
-        {/* Row 2: Metadata */}
-        <div className="flex items-center gap-3 text-xs text-ink-muted">
-          <span>{date.toLocaleDateString()}</span>
-          <span>
-            {query.responses.length} model{query.responses.length !== 1 ? 's' : ''}
-          </span>
           {query.swarm_id && (
             <Link
               to={`/observe/${query.swarm_id}`}
-              className="text-amber hover:text-amber-dark"
+              className="text-xs text-amber hover:text-amber-dark"
             >
               View Swarm
             </Link>
