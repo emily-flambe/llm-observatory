@@ -1240,7 +1240,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       <header className="border-b border-border bg-white/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-6 py-5">
           <div className="flex items-center justify-between">
-            <div>
+            <Link to="/" className="hover:opacity-80 transition-opacity">
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-semibold tracking-tight text-ink">LLM Observatory</h1>
                 <img src="/bee.png" alt="Pesky bee" className="w-12 h-12" />
@@ -1248,7 +1248,7 @@ function Layout({ children }: { children: React.ReactNode }) {
               <p className="text-sm text-ink-muted mt-0.5">
                 Release the swarm (for science)
               </p>
-            </div>
+            </Link>
             <nav className="flex border border-border rounded-lg overflow-hidden">
               <NavLink
                 to="/observe"
