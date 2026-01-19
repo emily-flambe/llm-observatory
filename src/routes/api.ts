@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../types/env';
+import auth from '../api/auth';
 import {
   getModels,
   getPromptTemplates,
@@ -1717,5 +1718,6 @@ admin.post('/prompt', async (c) => {
 });
 
 api.route('/admin', admin);
+api.route('/auth', auth);
 
 export { api };
