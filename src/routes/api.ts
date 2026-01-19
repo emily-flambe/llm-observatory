@@ -31,6 +31,7 @@ import {
   getCollectionResponses,
   insertRow,
   deleteRowsBySearch,
+  deleteSwarmRecordsWithNullId,
   extractProductFamily,
   extractCompany,
   getObservationResponsesById,
@@ -344,7 +345,34 @@ api.get('/prompts', async (c) => {
     return c.json({ error: result.error }, 500);
   }
 
-  return c.json({ prompts: result.data });
+  // For swarm records with null swarm_id, look up the swarm from D1 by prompt text
+  const prompts = result.data;
+  const swarmRecordsNeedingLookup = prompts.filter(
+    (p) => p.source === 'swarm' && !p.swarm_id
+  );
+
+  if (swarmRecordsNeedingLookup.length > 0) {
+    // Get all swarms from D1
+    const swarms = await getSwarms(c.env.DB, { includeDisabled: true });
+
+    // Create a map of prompt_text -> swarm_id
+    const promptToSwarmId = new Map<string, string>();
+    for (const swarm of swarms) {
+      promptToSwarmId.set(swarm.prompt_text, swarm.id);
+    }
+
+    // Update the records
+    for (const prompt of prompts) {
+      if (prompt.source === 'swarm' && !prompt.swarm_id) {
+        const swarmId = promptToSwarmId.get(prompt.prompt);
+        if (swarmId) {
+          prompt.swarm_id = swarmId;
+        }
+      }
+    }
+  }
+
+  return c.json({ prompts });
 });
 
 // ==================== Swarms ====================
@@ -1253,6 +1281,15 @@ admin.post('/backfill-bigquery', async (c) => {
     totalFailed,
     errors,
   });
+});
+
+// Delete swarm records with null swarm_id (for cleanup before re-running backfill)
+admin.post('/delete-null-swarm-records', async (c) => {
+  const result = await deleteSwarmRecordsWithNullId(c.env);
+  if (!result.success) {
+    return c.json({ success: false, error: result.error }, 500);
+  }
+  return c.json({ success: true, deletedRows: result.data.deletedRows });
 });
 
 // Update swarm_id in BigQuery for existing records

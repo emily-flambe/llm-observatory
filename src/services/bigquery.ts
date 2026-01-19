@@ -1411,6 +1411,68 @@ export async function deleteRowsBySearch(
 }
 
 /**
+ * Delete swarm records that have null swarm_id
+ * Used to clean up before re-running backfill
+ */
+export async function deleteSwarmRecordsWithNullId(
+  env: BigQueryEnv
+): Promise<BigQueryResult<{ deletedRows: number }>> {
+  const tokenResult = await getAccessToken(env);
+  if (!tokenResult.success) {
+    return tokenResult;
+  }
+
+  const url = `https://bigquery.googleapis.com/bigquery/v2/projects/${env.BQ_PROJECT_ID}/queries`;
+
+  const query = `
+    DELETE FROM \`${env.BQ_PROJECT_ID}.${env.BQ_DATASET_ID}.${env.BQ_TABLE_ID}\`
+    WHERE source = 'swarm' AND swarm_id IS NULL
+  `;
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${tokenResult.data}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query,
+        useLegacySql: false,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        success: false,
+        error: `BigQuery delete failed: ${response.status} ${errorText}`,
+      };
+    }
+
+    const result = (await response.json()) as {
+      jobComplete: boolean;
+      numDmlAffectedRows?: string;
+    };
+
+    if (!result.jobComplete) {
+      return {
+        success: false,
+        error: 'BigQuery delete did not complete synchronously',
+      };
+    }
+
+    return {
+      success: true,
+      data: { deletedRows: parseInt(result.numDmlAffectedRows || '0', 10) },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return { success: false, error: `BigQuery delete failed: ${message}` };
+  }
+}
+
+/**
  * Update swarm_id for records matching a prompt text
  * Used to backfill swarm_id for existing records
  */
