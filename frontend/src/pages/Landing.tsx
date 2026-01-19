@@ -185,7 +185,7 @@ export default function Landing() {
         >
           <h3 className="font-semibold text-ink mb-2">Observe</h3>
           <p className="text-sm text-ink-muted">
-            Run prompts across models, save observations, schedule recurring runs.
+            Run prompts across models, save swarms, schedule recurring runs.
           </p>
         </Link>
         <Link

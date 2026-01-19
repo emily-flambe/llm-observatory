@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
-  createObservation,
-  getObservation,
-  getObservations,
-  getObservationVersionModels,
-  getObservationTags,
-  getObservationVersions,
-  updateObservation,
-  deleteObservation,
-  restoreObservation,
-  updateObservationLastRunAt,
-} from '../../src/services/observations';
+  createSwarm,
+  getSwarm,
+  getSwarms,
+  getSwarmVersionModels,
+  getSwarmTags,
+  getSwarmVersions,
+  updateSwarm,
+  deleteSwarm,
+  restoreSwarm,
+  updateSwarmLastRunAt,
+} from '../../src/services/swarms';
 
 // Helper to create mock D1 database
 function createMockDb() {
@@ -55,7 +55,7 @@ function createMockDb() {
   return db as unknown as D1Database & typeof db;
 }
 
-describe('Observation Storage Functions', () => {
+describe('Swarm Storage Functions', () => {
   let mockDb: ReturnType<typeof createMockDb>;
 
   beforeEach(() => {
@@ -63,39 +63,39 @@ describe('Observation Storage Functions', () => {
     vi.clearAllMocks();
   });
 
-  describe('createObservation', () => {
-    it('creates an observation with required fields', async () => {
+  describe('createSwarm', () => {
+    it('creates a swarm with required fields', async () => {
       const input = {
         prompt_text: 'Test prompt about something',
         model_ids: ['model-1', 'model-2'],
       };
 
-      const result = await createObservation(mockDb, input);
+      const result = await createSwarm(mockDb, input);
 
-      expect(result.observation).toBeDefined();
-      expect(result.observation.prompt_text).toBe('Test prompt about something');
-      expect(result.observation.display_name).toBeNull();
-      expect(result.observation.disabled).toBe(0);
-      expect(result.observation.id).toBeDefined();
+      expect(result.swarm).toBeDefined();
+      expect(result.swarm.prompt_text).toBe('Test prompt about something');
+      expect(result.swarm.display_name).toBeNull();
+      expect(result.swarm.disabled).toBe(0);
+      expect(result.swarm.id).toBeDefined();
       expect(result.version).toBeDefined();
       expect(result.version.version).toBe(1);
       expect(result.version.schedule_type).toBeNull();
       expect(result.version.is_paused).toBe(0);
     });
 
-    it('creates an observation with optional display_name', async () => {
+    it('creates a swarm with optional display_name', async () => {
       const input = {
         prompt_text: 'Test prompt',
-        display_name: 'My Custom Observation',
+        display_name: 'My Custom Swarm',
         model_ids: ['model-1'],
       };
 
-      const result = await createObservation(mockDb, input);
+      const result = await createSwarm(mockDb, input);
 
-      expect(result.observation.display_name).toBe('My Custom Observation');
+      expect(result.swarm.display_name).toBe('My Custom Swarm');
     });
 
-    it('creates an observation with schedule', async () => {
+    it('creates a swarm with schedule', async () => {
       const input = {
         prompt_text: 'Test prompt',
         model_ids: ['model-1'],
@@ -103,26 +103,26 @@ describe('Observation Storage Functions', () => {
         cron_expression: '0 6 * * *',
       };
 
-      const result = await createObservation(mockDb, input);
+      const result = await createSwarm(mockDb, input);
 
       expect(result.version.schedule_type).toBe('daily');
       expect(result.version.cron_expression).toBe('0 6 * * *');
     });
 
-    it('inserts models into observation_version_models', async () => {
+    it('inserts models into swarm_version_models', async () => {
       const input = {
         prompt_text: 'Test prompt',
         model_ids: ['model-1', 'model-2', 'model-3'],
       };
 
       mockDb._resetPrepareCallCount();
-      await createObservation(mockDb, input);
+      await createSwarm(mockDb, input);
 
-      // Should call prepare for: observation insert, version insert, and 3 model inserts
+      // Should call prepare for: swarm insert, version insert, and 3 model inserts
       expect(mockDb._getPrepareCallCount()).toBe(5);
     });
 
-    it('creates an observation with tags', async () => {
+    it('creates a swarm with tags', async () => {
       const input = {
         prompt_text: 'Test prompt',
         model_ids: ['model-1'],
@@ -130,25 +130,25 @@ describe('Observation Storage Functions', () => {
       };
 
       mockDb._resetPrepareCallCount();
-      await createObservation(mockDb, input);
+      await createSwarm(mockDb, input);
 
-      // Should call prepare for: observation insert, version insert, 1 model insert, and 2 tag inserts
+      // Should call prepare for: swarm insert, version insert, 1 model insert, and 2 tag inserts
       expect(mockDb._getPrepareCallCount()).toBe(5);
     });
   });
 
-  describe('getObservation', () => {
-    it('returns null when observation not found', async () => {
+  describe('getSwarm', () => {
+    it('returns null when swarm not found', async () => {
       mockDb._setFirst(null);
 
-      const result = await getObservation(mockDb, 'non-existent-id');
+      const result = await getSwarm(mockDb, 'non-existent-id');
 
       expect(result).toBeNull();
     });
 
-    it('returns observation with details when found', async () => {
-      const mockObservation = {
-        id: 'observation-123',
+    it('returns swarm with details when found', async () => {
+      const mockSwarm = {
+        id: 'swarm-123',
         prompt_text: 'Test prompt',
         display_name: null,
         disabled: 0,
@@ -160,17 +160,17 @@ describe('Observation Storage Functions', () => {
         is_paused: 0,
         model_count: 3,
       };
-      mockDb._setFirst(mockObservation);
+      mockDb._setFirst(mockSwarm);
 
-      const result = await getObservation(mockDb, 'observation-123');
+      const result = await getSwarm(mockDb, 'swarm-123');
 
-      expect(result).toEqual(mockObservation);
-      expect(mockDb._mockStatement.bind).toHaveBeenCalledWith('observation-123');
+      expect(result).toEqual(mockSwarm);
+      expect(mockDb._mockStatement.bind).toHaveBeenCalledWith('swarm-123');
     });
 
-    it('returns observation with schedule details', async () => {
-      const mockObservation = {
-        id: 'observation-123',
+    it('returns swarm with schedule details', async () => {
+      const mockSwarm = {
+        id: 'swarm-123',
         prompt_text: 'Scheduled prompt',
         display_name: 'Daily Check',
         disabled: 0,
@@ -182,9 +182,9 @@ describe('Observation Storage Functions', () => {
         is_paused: 0,
         model_count: 5,
       };
-      mockDb._setFirst(mockObservation);
+      mockDb._setFirst(mockSwarm);
 
-      const result = await getObservation(mockDb, 'observation-123');
+      const result = await getSwarm(mockDb, 'swarm-123');
 
       expect(result?.schedule_type).toBe('daily');
       expect(result?.cron_expression).toBe('0 6 * * *');
@@ -192,19 +192,19 @@ describe('Observation Storage Functions', () => {
     });
   });
 
-  describe('getObservations', () => {
-    it('returns empty array when no observations exist', async () => {
+  describe('getSwarms', () => {
+    it('returns empty array when no swarms exist', async () => {
       mockDb._setResults([]);
 
-      const result = await getObservations(mockDb);
+      const result = await getSwarms(mockDb);
 
       expect(result).toEqual([]);
     });
 
-    it('returns all observations ordered by created_at DESC', async () => {
-      const mockObservations = [
+    it('returns all swarms ordered by created_at DESC', async () => {
+      const mockSwarms = [
         {
-          id: 'observation-2',
+          id: 'swarm-2',
           prompt_text: 'Prompt 2',
           display_name: null,
           disabled: 0,
@@ -217,7 +217,7 @@ describe('Observation Storage Functions', () => {
           model_count: 2,
         },
         {
-          id: 'observation-1',
+          id: 'swarm-1',
           prompt_text: 'Prompt 1',
           display_name: 'Custom Name',
           disabled: 0,
@@ -230,19 +230,19 @@ describe('Observation Storage Functions', () => {
           model_count: 5,
         },
       ];
-      mockDb._setResults(mockObservations);
+      mockDb._setResults(mockSwarms);
 
-      const result = await getObservations(mockDb);
+      const result = await getSwarms(mockDb);
 
       expect(result).toHaveLength(2);
-      expect(result[0].id).toBe('observation-2');
-      expect(result[1].id).toBe('observation-1');
+      expect(result[0].id).toBe('swarm-2');
+      expect(result[1].id).toBe('swarm-1');
     });
 
-    it('excludes disabled observations when includeDisabled is false', async () => {
-      const mockObservations = [
+    it('excludes disabled swarms when includeDisabled is false', async () => {
+      const mockSwarms = [
         {
-          id: 'observation-1',
+          id: 'swarm-1',
           prompt_text: 'Active prompt',
           display_name: null,
           disabled: 0,
@@ -255,18 +255,18 @@ describe('Observation Storage Functions', () => {
           model_count: 2,
         },
       ];
-      mockDb._setResults(mockObservations);
+      mockDb._setResults(mockSwarms);
 
-      const result = await getObservations(mockDb, { includeDisabled: false });
+      const result = await getSwarms(mockDb, { includeDisabled: false });
 
       expect(result).toHaveLength(1);
       expect(result[0].disabled).toBe(0);
     });
 
-    it('includes disabled observations by default', async () => {
-      const mockObservations = [
+    it('includes disabled swarms by default', async () => {
+      const mockSwarms = [
         {
-          id: 'observation-1',
+          id: 'swarm-1',
           prompt_text: 'Active prompt',
           display_name: null,
           disabled: 0,
@@ -279,7 +279,7 @@ describe('Observation Storage Functions', () => {
           model_count: 2,
         },
         {
-          id: 'observation-2',
+          id: 'swarm-2',
           prompt_text: 'Disabled prompt',
           display_name: null,
           disabled: 1,
@@ -292,52 +292,52 @@ describe('Observation Storage Functions', () => {
           model_count: 1,
         },
       ];
-      mockDb._setResults(mockObservations);
+      mockDb._setResults(mockSwarms);
 
-      const result = await getObservations(mockDb);
+      const result = await getSwarms(mockDb);
 
       expect(result).toHaveLength(2);
     });
   });
 
-  describe('getObservationVersionModels', () => {
+  describe('getSwarmVersionModels', () => {
     it('returns empty array when no models', async () => {
       mockDb._setResults([]);
 
-      const result = await getObservationVersionModels(mockDb, 'observation-123');
+      const result = await getSwarmVersionModels(mockDb, 'swarm-123');
 
       expect(result).toEqual([]);
     });
 
-    it('returns model IDs for observation', async () => {
+    it('returns model IDs for swarm', async () => {
       mockDb._setResults([
         { model_id: 'model-1' },
         { model_id: 'model-2' },
         { model_id: 'model-3' },
       ]);
 
-      const result = await getObservationVersionModels(mockDb, 'observation-123');
+      const result = await getSwarmVersionModels(mockDb, 'swarm-123');
 
       expect(result).toEqual(['model-1', 'model-2', 'model-3']);
     });
   });
 
-  describe('getObservationTags', () => {
+  describe('getSwarmTags', () => {
     it('returns empty array when no tags', async () => {
       mockDb._setResults([]);
 
-      const result = await getObservationTags(mockDb, 'observation-123');
+      const result = await getSwarmTags(mockDb, 'swarm-123');
 
       expect(result).toEqual([]);
     });
 
-    it('returns tags for observation', async () => {
+    it('returns tags for swarm', async () => {
       mockDb._setResults([
         { id: 'tag-1', name: 'Politics', color: '#ff0000' },
         { id: 'tag-2', name: 'Science', color: '#00ff00' },
       ]);
 
-      const result = await getObservationTags(mockDb, 'observation-123');
+      const result = await getSwarmTags(mockDb, 'swarm-123');
 
       expect(result).toHaveLength(2);
       expect(result[0]).toEqual({ id: 'tag-1', name: 'Politics', color: '#ff0000' });
@@ -345,11 +345,11 @@ describe('Observation Storage Functions', () => {
     });
   });
 
-  describe('getObservationVersions', () => {
+  describe('getSwarmVersions', () => {
     it('returns empty array when no versions', async () => {
       mockDb._setResults([]);
 
-      const result = await getObservationVersions(mockDb, 'observation-123');
+      const result = await getSwarmVersions(mockDb, 'swarm-123');
 
       expect(result).toEqual([]);
     });
@@ -358,7 +358,7 @@ describe('Observation Storage Functions', () => {
       const mockVersions = [
         {
           id: 'version-2',
-          observation_id: 'observation-123',
+          swarm_id: 'swarm-123',
           version: 2,
           schedule_type: 'daily',
           cron_expression: '0 6 * * *',
@@ -367,7 +367,7 @@ describe('Observation Storage Functions', () => {
         },
         {
           id: 'version-1',
-          observation_id: 'observation-123',
+          swarm_id: 'swarm-123',
           version: 1,
           schedule_type: null,
           cron_expression: null,
@@ -377,7 +377,7 @@ describe('Observation Storage Functions', () => {
       ];
       mockDb._setResults(mockVersions);
 
-      const result = await getObservationVersions(mockDb, 'observation-123');
+      const result = await getSwarmVersions(mockDb, 'swarm-123');
 
       expect(result).toHaveLength(2);
       expect(result[0].version).toBe(2);
@@ -385,21 +385,21 @@ describe('Observation Storage Functions', () => {
     });
   });
 
-  describe('updateObservation', () => {
-    it('returns null observation when observation not found', async () => {
+  describe('updateSwarm', () => {
+    it('returns null swarm when swarm not found', async () => {
       mockDb._setFirst(null);
 
-      const result = await updateObservation(mockDb, 'non-existent', {
+      const result = await updateSwarm(mockDb, 'non-existent', {
         display_name: 'New Name',
       });
 
-      expect(result.observation).toBeNull();
+      expect(result.swarm).toBeNull();
       expect(result.new_version).toBe(false);
     });
 
     it('updates display_name without creating new version', async () => {
-      const mockObservation = {
-        id: 'observation-123',
+      const mockSwarm = {
+        id: 'swarm-123',
         prompt_text: 'Test prompt',
         display_name: 'Old Name',
         disabled: 0,
@@ -412,11 +412,11 @@ describe('Observation Storage Functions', () => {
         model_count: 2,
       };
 
-      // First call returns the observation, subsequent calls also return it
-      mockDb._setFirst(mockObservation);
+      // First call returns the swarm, subsequent calls also return it
+      mockDb._setFirst(mockSwarm);
       mockDb._setResults([{ model_id: 'model-1' }, { model_id: 'model-2' }]);
 
-      const result = await updateObservation(mockDb, 'observation-123', {
+      const result = await updateSwarm(mockDb, 'swarm-123', {
         display_name: 'New Name',
       });
 
@@ -425,8 +425,8 @@ describe('Observation Storage Functions', () => {
     });
 
     it('creates new version when models change', async () => {
-      const mockObservation = {
-        id: 'observation-123',
+      const mockSwarm = {
+        id: 'swarm-123',
         prompt_text: 'Test prompt',
         display_name: null,
         disabled: 0,
@@ -439,10 +439,10 @@ describe('Observation Storage Functions', () => {
         model_count: 2,
       };
 
-      mockDb._setFirst(mockObservation);
+      mockDb._setFirst(mockSwarm);
       mockDb._setResults([{ model_id: 'model-1' }, { model_id: 'model-2' }]);
 
-      const result = await updateObservation(mockDb, 'observation-123', {
+      const result = await updateSwarm(mockDb, 'swarm-123', {
         model_ids: ['model-1', 'model-3'], // Changed models
       });
 
@@ -450,8 +450,8 @@ describe('Observation Storage Functions', () => {
     });
 
     it('creates new version when schedule changes', async () => {
-      const mockObservation = {
-        id: 'observation-123',
+      const mockSwarm = {
+        id: 'swarm-123',
         prompt_text: 'Test prompt',
         display_name: null,
         disabled: 0,
@@ -464,10 +464,10 @@ describe('Observation Storage Functions', () => {
         model_count: 2,
       };
 
-      mockDb._setFirst(mockObservation);
+      mockDb._setFirst(mockSwarm);
       mockDb._setResults([{ model_id: 'model-1' }, { model_id: 'model-2' }]);
 
-      const result = await updateObservation(mockDb, 'observation-123', {
+      const result = await updateSwarm(mockDb, 'swarm-123', {
         schedule_type: 'daily',
         cron_expression: '0 6 * * *',
       });
@@ -476,8 +476,8 @@ describe('Observation Storage Functions', () => {
     });
 
     it('does not create new version when only tags change', async () => {
-      const mockObservation = {
-        id: 'observation-123',
+      const mockSwarm = {
+        id: 'swarm-123',
         prompt_text: 'Test prompt',
         display_name: null,
         disabled: 0,
@@ -490,10 +490,10 @@ describe('Observation Storage Functions', () => {
         model_count: 2,
       };
 
-      mockDb._setFirst(mockObservation);
+      mockDb._setFirst(mockSwarm);
       mockDb._setResults([{ model_id: 'model-1' }, { model_id: 'model-2' }]);
 
-      const result = await updateObservation(mockDb, 'observation-123', {
+      const result = await updateSwarm(mockDb, 'swarm-123', {
         tag_ids: ['tag-1', 'tag-2'],
       });
 
@@ -502,51 +502,51 @@ describe('Observation Storage Functions', () => {
     });
   });
 
-  describe('deleteObservation', () => {
-    it('returns true when observation deleted (soft delete)', async () => {
+  describe('deleteSwarm', () => {
+    it('returns true when swarm deleted (soft delete)', async () => {
       mockDb._mockStatement.run.mockResolvedValue({ meta: { changes: 1 } });
 
-      const result = await deleteObservation(mockDb, 'observation-123');
+      const result = await deleteSwarm(mockDb, 'swarm-123');
 
       expect(result).toBe(true);
-      expect(mockDb._mockStatement.bind).toHaveBeenCalledWith('observation-123');
+      expect(mockDb._mockStatement.bind).toHaveBeenCalledWith('swarm-123');
     });
 
-    it('returns false when observation not found', async () => {
+    it('returns false when swarm not found', async () => {
       mockDb._mockStatement.run.mockResolvedValue({ meta: { changes: 0 } });
 
-      const result = await deleteObservation(mockDb, 'non-existent-id');
+      const result = await deleteSwarm(mockDb, 'non-existent-id');
 
       expect(result).toBe(false);
     });
   });
 
-  describe('restoreObservation', () => {
-    it('returns true when observation restored', async () => {
+  describe('restoreSwarm', () => {
+    it('returns true when swarm restored', async () => {
       mockDb._mockStatement.run.mockResolvedValue({ meta: { changes: 1 } });
 
-      const result = await restoreObservation(mockDb, 'observation-123');
+      const result = await restoreSwarm(mockDb, 'swarm-123');
 
       expect(result).toBe(true);
-      expect(mockDb._mockStatement.bind).toHaveBeenCalledWith('observation-123');
+      expect(mockDb._mockStatement.bind).toHaveBeenCalledWith('swarm-123');
     });
 
-    it('returns false when observation not found', async () => {
+    it('returns false when swarm not found', async () => {
       mockDb._mockStatement.run.mockResolvedValue({ meta: { changes: 0 } });
 
-      const result = await restoreObservation(mockDb, 'non-existent-id');
+      const result = await restoreSwarm(mockDb, 'non-existent-id');
 
       expect(result).toBe(false);
     });
   });
 
-  describe('updateObservationLastRunAt', () => {
+  describe('updateSwarmLastRunAt', () => {
     it('updates last_run_at timestamp', async () => {
-      await updateObservationLastRunAt(mockDb, 'observation-123');
+      await updateSwarmLastRunAt(mockDb, 'swarm-123');
 
       expect(mockDb.prepare).toHaveBeenCalled();
       const boundValues = mockDb._getLastBoundValues();
-      expect(boundValues[1]).toBe('observation-123');
+      expect(boundValues[1]).toBe('swarm-123');
       // First value should be an ISO timestamp
       expect(typeof boundValues[0]).toBe('string');
       expect((boundValues[0] as string).match(/^\d{4}-\d{2}-\d{2}T/)).toBeTruthy();

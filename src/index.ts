@@ -5,7 +5,7 @@ import { api } from './routes/api';
 import { syncAllProviders } from './services/model-sync';
 import { syncBasellmMetadata } from './services/basellm';
 import { runScheduledCollections } from './services/collection-scheduler';
-import { runScheduledObservations } from './services/observation-scheduler';
+import { runScheduledSwarms } from './services/swarm-scheduler';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -49,11 +49,11 @@ export default {
       })
     );
 
-    // Observation scheduler runs every minute (checks cron expressions)
+    // Swarm scheduler runs every minute (checks cron expressions)
     ctx.waitUntil(
-      runScheduledObservations(env).then((result) => {
+      runScheduledSwarms(env).then((result) => {
         if (result.ran > 0) {
-          console.log(`Scheduled observations: ran ${result.ran} of ${result.checked} observations`);
+          console.log(`Scheduled swarms: ran ${result.ran} of ${result.checked} swarms`);
         }
       })
     );

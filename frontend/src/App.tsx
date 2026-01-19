@@ -9,7 +9,7 @@ import {
   useParams,
   Link,
 } from 'react-router-dom';
-import ObservationForm from './components/ObservationForm';
+import SwarmForm from './components/SwarmForm';
 import Landing from './pages/Landing';
 import ExploreModels from './pages/ExploreModels';
 import { parseBigQueryTimestamp } from './utils/date';
@@ -52,7 +52,7 @@ function ObserveNewPage() {
   return (
     <div>
       <ObserveNavTabs />
-      <ObservationForm />
+      <SwarmForm />
     </div>
   );
 }
@@ -62,7 +62,7 @@ function ObserveEditPage() {
   return (
     <div>
       <ObserveNavTabs />
-      <ObservationForm editId={id} />
+      <SwarmForm editId={id} />
     </div>
   );
 }
@@ -70,14 +70,14 @@ function ObserveEditPage() {
 // Helper to get stored timezone or default to browser timezone
 function getStoredTimezone(): string {
   if (typeof window !== 'undefined') {
-    return localStorage.getItem('observatory-timezone') || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return localStorage.getItem('swarm-timezone') || Intl.DateTimeFormat().resolvedOptions().timeZone;
   }
   return 'UTC';
 }
 
 function setStoredTimezone(tz: string): void {
   if (typeof window !== 'undefined') {
-    localStorage.setItem('observatory-timezone', tz);
+    localStorage.setItem('swarm-timezone', tz);
   }
 }
 
@@ -166,37 +166,37 @@ function formatDateInTimezone(date: Date, timezone: string): string {
   }
 }
 
-function ManageObservationCard({ observation, onUpdate }: { observation: Collection; onUpdate?: () => void }) {
+function ManageSwarmCard({ swarm, onUpdate }: { swarm: Collection; onUpdate?: () => void }) {
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
-  const [scheduleType, setScheduleType] = useState<string>(observation.schedule_type || '');
-  const [cronExpression, setCronExpression] = useState(observation.cron_expression || '');
+  const [scheduleType, setScheduleType] = useState<string>(swarm.schedule_type || '');
+  const [cronExpression, setCronExpression] = useState(swarm.cron_expression || '');
   const [timezone, setTimezone] = useState(getStoredTimezone);
   const [saving, setSaving] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const lastRunDate = observation.last_run_at ? parseBigQueryTimestamp(observation.last_run_at) : null;
-  const displayName = observation.display_name || (observation.prompt_text?.slice(0, 50) + (observation.prompt_text && observation.prompt_text.length > 50 ? '...' : ''));
-  const isDisabled = observation.disabled === 1;
+  const lastRunDate = swarm.last_run_at ? parseBigQueryTimestamp(swarm.last_run_at) : null;
+  const displayName = swarm.display_name || (swarm.prompt_text?.slice(0, 50) + (swarm.prompt_text && swarm.prompt_text.length > 50 ? '...' : ''));
+  const isDisabled = swarm.disabled === 1;
 
   let status: { label: string; color: string; icon: string };
   if (isDisabled) {
     status = { label: 'Disabled', color: 'text-ink-muted', icon: '⊘' };
-  } else if (!observation.schedule_type) {
+  } else if (!swarm.schedule_type) {
     status = { label: 'Manual', color: 'text-ink-muted', icon: '○' };
-  } else if (observation.is_paused) {
+  } else if (swarm.is_paused) {
     status = { label: 'Paused', color: 'text-amber', icon: '⏸' };
   } else {
     status = { label: 'Active', color: 'text-green-600', icon: '●' };
   }
 
   const formatSchedule = () => {
-    if (!observation.schedule_type) return 'No schedule';
-    if (observation.schedule_type === 'custom') return observation.cron_expression || 'Custom';
-    return observation.schedule_type.charAt(0).toUpperCase() + observation.schedule_type.slice(1);
+    if (!swarm.schedule_type) return 'No schedule';
+    if (swarm.schedule_type === 'custom') return swarm.cron_expression || 'Custom';
+    return swarm.schedule_type.charAt(0).toUpperCase() + swarm.schedule_type.slice(1);
   };
 
-  const nextRun = calculateNextRun(observation.schedule_type, observation.cron_expression, observation.last_run_at, timezone);
+  const nextRun = calculateNextRun(swarm.schedule_type, swarm.cron_expression, swarm.last_run_at, timezone);
 
   const handleSaveSchedule = async () => {
     if (!apiKey.trim()) {
@@ -208,7 +208,7 @@ function ManageObservationCard({ observation, onUpdate }: { observation: Collect
     setError(null);
 
     try {
-      const res = await fetch(`/api/observations/${observation.id}`, {
+      const res = await fetch(`/api/swarms/${swarm.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -247,9 +247,9 @@ function ManageObservationCard({ observation, onUpdate }: { observation: Collect
               {status.icon} {status.label}
             </span>
           </div>
-          <p className="text-sm text-ink-muted mt-1 line-clamp-2">{observation.prompt_text}</p>
+          <p className="text-sm text-ink-muted mt-1 line-clamp-2">{swarm.prompt_text}</p>
           <div className="mt-2 flex items-center gap-3 text-xs text-ink-muted flex-wrap">
-            <span>{observation.model_count} model{observation.model_count !== 1 ? 's' : ''}</span>
+            <span>{swarm.model_count} model{swarm.model_count !== 1 ? 's' : ''}</span>
             <span>·</span>
             <span className="inline-flex items-center gap-1">
               {formatSchedule()}
@@ -273,7 +273,7 @@ function ManageObservationCard({ observation, onUpdate }: { observation: Collect
                 <span>Last: {formatDateInTimezone(lastRunDate, timezone)}</span>
               </>
             )}
-            {nextRun && !observation.is_paused && (
+            {nextRun && !swarm.is_paused && (
               <>
                 <span>·</span>
                 <span className="text-green-600">Next: {formatDateInTimezone(nextRun, timezone)}</span>
@@ -282,7 +282,7 @@ function ManageObservationCard({ observation, onUpdate }: { observation: Collect
           </div>
         </div>
         <Link
-          to={`/observe/${observation.id}`}
+          to={`/observe/${swarm.id}`}
           className="text-xs text-amber hover:text-amber-dark shrink-0"
         >
           View →
@@ -362,8 +362,8 @@ function ManageObservationCard({ observation, onUpdate }: { observation: Collect
               <button
                 onClick={() => {
                   setScheduleExpanded(false);
-                  setScheduleType(observation.schedule_type || '');
-                  setCronExpression(observation.cron_expression || '');
+                  setScheduleType(swarm.schedule_type || '');
+                  setCronExpression(swarm.cron_expression || '');
                   setError(null);
                 }}
                 className="px-3 py-1.5 text-xs font-medium text-ink-muted hover:text-ink"
@@ -379,7 +379,7 @@ function ManageObservationCard({ observation, onUpdate }: { observation: Collect
 }
 
 function ObserveManagePage() {
-  const [observations, setObservations] = useState<Collection[]>([]);
+  const [swarms, setSwarms] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDisabled, setShowDisabled] = useState(false);
@@ -390,19 +390,19 @@ function ObserveManagePage() {
   }, []);
 
   useEffect(() => {
-    fetch(`/api/observations?includeDisabled=${showDisabled}`)
+    fetch(`/api/swarms?includeDisabled=${showDisabled}`)
       .then(async (res) => {
-        const data = (await res.json()) as { error?: string; observations?: Collection[] };
-        if (!res.ok) throw new Error(data.error || 'Failed to load observations');
+        const data = (await res.json()) as { error?: string; swarms?: Collection[] };
+        if (!res.ok) throw new Error(data.error || 'Failed to load swarms');
         return data;
       })
       .then((data) => {
-        setObservations(data.observations || []);
+        setSwarms(data.swarms || []);
         setError(null);
       })
       .catch((err: Error) => {
         setError(err.message);
-        setObservations([]);
+        setSwarms([]);
       })
       .finally(() => setLoading(false));
   }, [showDisabled, refreshCounter]);
@@ -420,25 +420,25 @@ function ObserveManagePage() {
             onChange={(e) => setShowDisabled(e.target.checked)}
             className="rounded border-border text-amber focus:ring-amber"
           />
-          Show disabled observations
+          Show disabled swarms
         </label>
       </div>
 
       {loading ? (
-        <div className="text-center py-20 text-ink-muted">Loading observations...</div>
+        <div className="text-center py-20 text-ink-muted">Loading swarms...</div>
       ) : error ? (
         <div className="text-center py-20">
-          <div className="text-error mb-2">Failed to load observations</div>
+          <div className="text-error mb-2">Failed to load swarms</div>
           <div className="text-sm text-ink-muted">{error}</div>
         </div>
-      ) : observations.length === 0 ? (
+      ) : swarms.length === 0 ? (
         <div className="text-center py-20 text-ink-muted">
-          No observations yet. Use the New tab to create your first observation.
+          No swarms yet. Use the New tab to create your first swarm.
         </div>
       ) : (
         <div className="space-y-4">
-          {observations.map((obs) => (
-            <ManageObservationCard key={obs.id} observation={obs} onUpdate={refresh} />
+          {swarms.map((s) => (
+            <ManageSwarmCard key={s.id} swarm={s} onUpdate={refresh} />
           ))}
         </div>
       )}
@@ -727,11 +727,11 @@ function PromptsContent({
           <label className="flex items-center gap-1.5 text-sm text-ink cursor-pointer">
             <input
               type="checkbox"
-              checked={filters.sources.includes('observation')}
-              onChange={() => toggleSource('observation')}
+              checked={filters.sources.includes('swarm')}
+              onChange={() => toggleSource('swarm')}
               className="rounded border-border text-amber focus:ring-amber"
             />
-            Observations
+            Swarms
           </label>
           <label className="flex items-center gap-1.5 text-sm text-ink cursor-pointer">
             <input
@@ -746,7 +746,7 @@ function PromptsContent({
 
         {hasActiveFilters && (
           <button
-            onClick={() => onFilterChange({ models: [], companies: [], topics: [], sources: ['observation', 'prompt-lab'] })}
+            onClick={() => onFilterChange({ models: [], companies: [], topics: [], sources: ['swarm', 'prompt-lab'] })}
             className="px-3 py-2 text-sm text-ink-muted hover:text-ink"
           >
             Clear filters
@@ -819,9 +819,9 @@ function HistoryPromptsPage() {
 
   // Parse sources from URL, default to both checked (show all)
   const parseSources = (param: string | null): string[] => {
-    if (param === null) return ['observation', 'prompt-lab']; // Default: both checked
+    if (param === null) return ['swarm', 'prompt-lab']; // Default: both checked
     const sources = param.split(',').filter(Boolean);
-    return sources.length > 0 ? sources : ['observation', 'prompt-lab'];
+    return sources.length > 0 ? sources : ['swarm', 'prompt-lab'];
   };
 
   const filters: FilterParams = {
@@ -863,9 +863,9 @@ function HistoryPromptsPage() {
   );
 }
 
-function ObservationDetailPage() {
+function SwarmDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [observation, setObservation] = useState<Collection | null>(null);
+  const [swarm, setSwarm] = useState<Collection | null>(null);
   const [prompts, setPrompts] = useState<PromptLabQuery[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -880,14 +880,14 @@ function ObservationDetailPage() {
     if (!id) return;
 
     Promise.all([
-      fetch(`/api/observations/${id}`).then((res) => res.json()) as Promise<{ error?: string; observation: Collection }>,
-      fetch(`/api/observations/${id}/responses`).then((res) => res.json()) as Promise<PromptsResponse & { error?: string }>,
+      fetch(`/api/swarms/${id}`).then((res) => res.json()) as Promise<{ error?: string; swarm: Collection }>,
+      fetch(`/api/swarms/${id}/responses`).then((res) => res.json()) as Promise<PromptsResponse & { error?: string }>,
     ])
-      .then(([observationData, responsesData]) => {
-        if (observationData.error) {
-          throw new Error(observationData.error);
+      .then(([swarmData, responsesData]) => {
+        if (swarmData.error) {
+          throw new Error(swarmData.error);
         }
-        setObservation(observationData.observation);
+        setSwarm(swarmData.swarm);
         setPrompts(responsesData.prompts || []);
         setLoading(false);
       })
@@ -934,7 +934,7 @@ function ObservationDetailPage() {
 
   const handleRunNow = async () => {
     if (!apiKey || !id) {
-      setActionError('Please enter an API key to run observations');
+      setActionError('Please enter an API key to release swarm');
       return;
     }
     setActionError(null);
@@ -942,7 +942,7 @@ function ObservationDetailPage() {
     setIsRunning(true);
 
     try {
-      const res = await fetch(`/api/admin/observations/${id}/run`, {
+      const res = await fetch(`/api/admin/swarms/${id}/run`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -951,88 +951,88 @@ function ObservationDetailPage() {
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to run observation');
+        throw new Error(data.error || 'Failed to release swarm');
       }
-      setActionSuccess('Observation run completed successfully!');
+      setActionSuccess('Swarm released successfully!');
       loadData();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to run observation');
+      setActionError(err instanceof Error ? err.message : 'Failed to release swarm');
     } finally {
       setIsRunning(false);
     }
   };
 
   const handleTogglePause = async () => {
-    if (!apiKey || !id || !observation) {
-      setActionError('Please enter an API key to modify observations');
+    if (!apiKey || !id || !swarm) {
+      setActionError('Please enter an API key to modify swarm');
       return;
     }
     setActionError(null);
     setActionSuccess(null);
 
     try {
-      const res = await fetch(`/api/observations/${id}`, {
+      const res = await fetch(`/api/swarms/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({ is_paused: !observation.is_paused }),
+        body: JSON.stringify({ is_paused: !swarm.is_paused }),
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to update observation');
+        throw new Error(data.error || 'Failed to update swarm');
       }
       loadData();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to update observation');
+      setActionError(err instanceof Error ? err.message : 'Failed to update swarm');
     }
   };
 
   const handleDisable = async () => {
     if (!apiKey || !id) {
-      setActionError('Please enter an API key to disable observations');
+      setActionError('Please enter an API key to disable swarm');
       return;
     }
     setActionError(null);
     setActionSuccess(null);
 
     try {
-      const res = await fetch(`/api/observations/${id}`, {
+      const res = await fetch(`/api/swarms/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${apiKey}` },
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to disable observation');
+        throw new Error(data.error || 'Failed to disable swarm');
       }
       loadData();
       setShowDisableConfirm(false);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to disable observation');
+      setActionError(err instanceof Error ? err.message : 'Failed to disable swarm');
     }
   };
 
   const handleRestore = async () => {
     if (!apiKey || !id) {
-      setActionError('Please enter an API key to restore observations');
+      setActionError('Please enter an API key to restore swarm');
       return;
     }
     setActionError(null);
     setActionSuccess(null);
 
     try {
-      const res = await fetch(`/api/observations/${id}/restore`, {
+      const res = await fetch(`/api/swarms/${id}/restore`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${apiKey}` },
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to restore observation');
+        throw new Error(data.error || 'Failed to restore swarm');
       }
       loadData();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to restore observation');
+      setActionError(err instanceof Error ? err.message : 'Failed to restore swarm');
     }
   };
 
@@ -1053,17 +1053,17 @@ function ObservationDetailPage() {
     return (
       <div>
         <ObserveNavTabs />
-        <div className="text-center py-20 text-ink-muted">Loading observation...</div>
+        <div className="text-center py-20 text-ink-muted">Loading swarm...</div>
       </div>
     );
   }
 
-  if (error || !observation) {
+  if (error || !swarm) {
     return (
       <div>
         <ObserveNavTabs />
         <div className="text-center py-20">
-          <div className="text-error mb-2">Failed to load observation</div>
+          <div className="text-error mb-2">Failed to load swarm</div>
           <div className="text-sm text-ink-muted">{error}</div>
           <Link to="/observe/manage" className="text-amber hover:text-amber-dark text-sm mt-4 inline-block">
             ← Back to Manage
@@ -1073,15 +1073,15 @@ function ObservationDetailPage() {
     );
   }
 
-  const displayName = observation.display_name || (observation.prompt_text?.slice(0, 50) + (observation.prompt_text && observation.prompt_text.length > 50 ? '...' : ''));
-  const isDisabled = observation.disabled === 1;
+  const displayName = swarm.display_name || (swarm.prompt_text?.slice(0, 50) + (swarm.prompt_text && swarm.prompt_text.length > 50 ? '...' : ''));
+  const isDisabled = swarm.disabled === 1;
 
   let status: { label: string; color: string; icon: string };
   if (isDisabled) {
     status = { label: 'Disabled', color: 'text-ink-muted', icon: '⊘' };
-  } else if (!observation.schedule_type) {
+  } else if (!swarm.schedule_type) {
     status = { label: 'Manual', color: 'text-ink-muted', icon: '○' };
-  } else if (observation.is_paused) {
+  } else if (swarm.is_paused) {
     status = { label: 'Paused', color: 'text-amber', icon: '⏸' };
   } else {
     status = { label: 'Active', color: 'text-green-600', icon: '●' };
@@ -1105,7 +1105,7 @@ function ObservationDetailPage() {
                 {status.icon} {status.label}
               </span>
             </div>
-            <p className="text-sm text-ink-muted mt-1">{observation.prompt_text}</p>
+            <p className="text-sm text-ink-muted mt-1">{swarm.prompt_text}</p>
           </div>
         </div>
       </div>
@@ -1133,29 +1133,29 @@ function ObservationDetailPage() {
                 disabled={isRunning}
                 className="px-3 py-2 text-sm bg-amber text-white rounded-lg hover:bg-amber-dark disabled:opacity-50"
               >
-                {isRunning ? 'Running...' : 'Run Now'}
+                {isRunning ? 'Releasing...' : 'Release the Swarm'}
               </button>
-              {observation.schedule_type && (
+              {swarm.schedule_type && (
                 <button
                   onClick={handleTogglePause}
                   className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-white"
                 >
-                  {observation.is_paused ? 'Resume Schedule' : 'Pause Schedule'}
+                  {swarm.is_paused ? 'Resume Schedule' : 'Pause Schedule'}
                 </button>
               )}
               <Link
-                to={`/observe/${observation.id}/edit`}
+                to={`/observe/${swarm.id}/edit`}
                 className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-white"
               >
                 Edit
               </Link>
               <Link
                 to={`/observe?${new URLSearchParams({
-                  prompt: observation.prompt_text,
-                  models: (observation as CollectionDetail).models?.map((m) => m.id).join(',') || '',
-                  ...(observation.display_name ? { name: `${observation.display_name} (Copy)` } : {}),
-                  ...(observation.schedule_type ? { schedule: observation.schedule_type } : {}),
-                  ...(observation.cron_expression ? { cron: observation.cron_expression } : {}),
+                  prompt: swarm.prompt_text,
+                  models: (swarm as CollectionDetail).models?.map((m) => m.id).join(',') || '',
+                  ...(swarm.display_name ? { name: `${swarm.display_name} (Copy)` } : {}),
+                  ...(swarm.schedule_type ? { schedule: swarm.schedule_type } : {}),
+                  ...(swarm.cron_expression ? { cron: swarm.cron_expression } : {}),
                 }).toString()}`}
                 className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-white"
               >
@@ -1195,15 +1195,15 @@ function ObservationDetailPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
             <div className="text-ink-muted">Schedule</div>
-            <div className="font-medium text-ink">{formatSchedule(observation.schedule_type, observation.cron_expression)}</div>
+            <div className="font-medium text-ink">{formatSchedule(swarm.schedule_type, swarm.cron_expression)}</div>
           </div>
           <div>
             <div className="text-ink-muted">Last Run</div>
-            <div className="font-medium text-ink">{formatLocalTime(observation.last_run_at)}</div>
+            <div className="font-medium text-ink">{formatLocalTime(swarm.last_run_at)}</div>
           </div>
           <div>
             <div className="text-ink-muted">Models</div>
-            <div className="font-medium text-ink">{observation.model_count}</div>
+            <div className="font-medium text-ink">{swarm.model_count}</div>
           </div>
           <div>
             <div className="text-ink-muted">Executions</div>
@@ -1378,7 +1378,7 @@ export default function App() {
           {/* Observe routes */}
           <Route path="/observe" element={<ObserveNewPage />} />
           <Route path="/observe/manage" element={<ObserveManagePage />} />
-          <Route path="/observe/:id" element={<ObservationDetailPage />} />
+          <Route path="/observe/:id" element={<SwarmDetailPage />} />
           <Route path="/observe/:id/edit" element={<ObserveEditPage />} />
           {/* History routes */}
           <Route path="/history" element={<Navigate to="/history/prompts" replace />} />
