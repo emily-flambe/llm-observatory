@@ -126,6 +126,7 @@ export interface PromptLabQuery {
 
 export interface PromptsResponse {
   prompts: PromptLabQuery[];
+  hasMore?: boolean;
 }
 
 // Tag types

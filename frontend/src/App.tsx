@@ -596,6 +596,9 @@ function PromptsContent({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState(filters.search);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const pageSize = 20;
 
   // Derive unique companies from models (actual creators, not hosting providers)
   const companies = [...new Set(models.map((m) => m.company))].sort();
@@ -606,10 +609,15 @@ function PromptsContent({
       ? models.filter((m) => filters.companies.includes(m.company))
       : models;
 
-  // Load prompts when filters change (component is keyed so loading starts as true)
+  // Load prompts when filters or page change
   useEffect(() => {
+    // Show loading state during fetch (legitimate for data fetching patterns)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
+    let cancelled = false;
     const params = new URLSearchParams();
-    params.set('limit', '50');
+    params.set('limit', String(pageSize));
+    params.set('offset', String(page * pageSize));
     if (filters.search) params.set('search', filters.search);
     if (filters.models.length > 0) params.set('models', filters.models.join(','));
     if (filters.companies.length > 0) params.set('companies', filters.companies.join(','));
@@ -624,19 +632,36 @@ function PromptsContent({
         return data;
       })
       .then((data) => {
+        if (cancelled) return;
         setPrompts(data.prompts || []);
+        setHasMore(data.hasMore || false);
         setError(null);
       })
       .catch((err: Error) => {
+        if (cancelled) return;
         setError(err.message);
         setPrompts([]);
+        setHasMore(false);
       })
-      .finally(() => setLoading(false));
-  }, [filters.search, filters.models, filters.companies, filters.topics, filters.sources]);
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [filters.search, filters.models, filters.companies, filters.topics, filters.sources, page]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    setPage(0);
     onFilterChange({ search: searchInput });
+  };
+
+  // Reset page when filters change
+  const handleFilterChangeWithReset = (newFilters: Partial<FilterParams>) => {
+    setPage(0);
+    onFilterChange(newFilters);
   };
 
   const hasActiveFilters =
@@ -650,14 +675,14 @@ function PromptsContent({
           label="All Companies"
           options={companies}
           selected={filters.companies}
-          onChange={(companies) => onFilterChange({ companies })}
+          onChange={(companies) => handleFilterChangeWithReset({ companies })}
         />
 
         <MultiSelect
           label="All Models"
           options={filteredModels.map((m) => ({ label: m.display_name, value: m.model_name }))}
           selected={filters.models}
-          onChange={(models) => onFilterChange({ models })}
+          onChange={(models) => handleFilterChangeWithReset({ models })}
           getLabel={(o) => (typeof o === 'string' ? o : o.label)}
           getValue={(o) => (typeof o === 'string' ? o : o.value)}
         />
@@ -666,7 +691,7 @@ function PromptsContent({
           label="All Topics"
           options={topics.map((t) => ({ label: t.name, value: t.id }))}
           selected={filters.topics}
-          onChange={(topics) => onFilterChange({ topics })}
+          onChange={(topics) => handleFilterChangeWithReset({ topics })}
           getLabel={(o) => (typeof o === 'string' ? o : o.label)}
           getValue={(o) => (typeof o === 'string' ? o : o.value)}
         />
@@ -674,7 +699,7 @@ function PromptsContent({
 
         {hasActiveFilters && (
           <button
-            onClick={() => onFilterChange({ models: [], companies: [], topics: [] })}
+            onClick={() => handleFilterChangeWithReset({ models: [], companies: [], topics: [] })}
             className="px-3 py-2 text-sm text-ink-muted hover:text-ink"
           >
             Clear filters
@@ -715,11 +740,34 @@ function PromptsContent({
             : 'No prompts yet. Use the Create page to run prompts.'}
         </div>
       ) : (
-        <div className="space-y-4">
-          {prompts.map((query) => (
-            <PromptCard key={query.id} query={query} />
-          ))}
-        </div>
+        <>
+          <div className="space-y-4">
+            {prompts.map((query) => (
+              <PromptCard key={query.id} query={query} />
+            ))}
+          </div>
+
+          {/* Pagination */}
+          {(page > 0 || hasMore) && (
+            <div className="mt-6 flex justify-center gap-4">
+              <button
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="px-4 py-2 text-sm font-medium text-ink-muted hover:text-ink disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                ← Previous
+              </button>
+              <span className="px-4 py-2 text-sm text-ink-muted">Page {page + 1}</span>
+              <button
+                onClick={() => setPage((p) => p + 1)}
+                disabled={!hasMore}
+                className="px-4 py-2 text-sm font-medium text-ink-muted hover:text-ink disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next →
+              </button>
+            </div>
+          )}
+        </>
       )}
     </>
   );
