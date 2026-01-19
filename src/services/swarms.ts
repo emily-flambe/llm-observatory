@@ -348,11 +348,18 @@ export async function restoreSwarm(db: D1Database, id: string): Promise<boolean>
 }
 
 /**
- * Update last_run_at timestamp after running a swarm
+ * Update last_run_at timestamp for a swarm
+ * @param db - D1 database instance
+ * @param id - Swarm ID
+ * @param timestamp - Optional timestamp to use (defaults to current time)
  */
-export async function updateSwarmLastRunAt(db: D1Database, id: string): Promise<void> {
-  const now = new Date().toISOString();
-  await db.prepare('UPDATE observations SET last_run_at = ? WHERE id = ?').bind(now, id).run();
+export async function updateSwarmLastRunAt(
+  db: D1Database,
+  id: string,
+  timestamp?: Date
+): Promise<void> {
+  const ts = (timestamp ?? new Date()).toISOString();
+  await db.prepare('UPDATE observations SET last_run_at = ? WHERE id = ?').bind(ts, id).run();
 }
 
 // ==================== Swarm Runs ====================
