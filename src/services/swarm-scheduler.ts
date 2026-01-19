@@ -1,16 +1,16 @@
 /**
- * Observation scheduler service
- * Runs scheduled observations based on their cron expressions
+ * Swarm scheduler service
+ * Runs scheduled swarms based on their cron expressions
  */
 
 import type { Env } from '../types/env';
 import {
-  getObservations,
-  getObservationVersionModels,
-  updateObservationLastRunAt,
-  createObservationRun,
-  type ObservationWithDetails,
-} from './observations';
+  getSwarms,
+  getSwarmVersionModels,
+  updateSwarmLastRunAt,
+  createSwarmRun,
+  type SwarmWithDetails,
+} from './swarms';
 import { getModel } from './storage';
 import { createLLMProvider } from './llm';
 import {
@@ -78,12 +78,12 @@ function matchCronField(field: string, value: number): boolean {
 /**
  * Convert schedule_type to cron expression if not custom
  */
-function getEffectiveCron(observation: ObservationWithDetails): string | null {
-  if (!observation.schedule_type) return null;
-  if (observation.cron_expression) return observation.cron_expression;
+function getEffectiveCron(swarm: SwarmWithDetails): string | null {
+  if (!swarm.schedule_type) return null;
+  if (swarm.cron_expression) return swarm.cron_expression;
 
   // Default schedules run at 9:00 AM UTC
-  switch (observation.schedule_type) {
+  switch (swarm.schedule_type) {
     case 'daily':
       return '0 9 * * *';
     case 'weekly':
@@ -96,27 +96,27 @@ function getEffectiveCron(observation: ObservationWithDetails): string | null {
 }
 
 /**
- * Run all scheduled observations that are due
+ * Run all scheduled swarms that are due
  * @param env - Environment bindings
  * @param scheduledTime - The time the cron trigger fired (not the execution time)
  */
-export async function runScheduledObservations(
+export async function runScheduledSwarms(
   env: Env,
   scheduledTime: Date
 ): Promise<{
   checked: number;
   ran: number;
   results: Array<{
-    observationId: string;
+    swarmId: string;
     success: boolean;
     modelsRan: number;
     error?: string;
   }>;
 }> {
-  const observations = await getObservations(env.DB);
+  const swarms = await getSwarms(env.DB);
 
   const results: Array<{
-    observationId: string;
+    swarmId: string;
     success: boolean;
     modelsRan: number;
     error?: string;
@@ -124,13 +124,13 @@ export async function runScheduledObservations(
 
   let ran = 0;
 
-  for (const observation of observations) {
+  for (const swarm of swarms) {
     // Skip if no schedule or paused
-    if (!observation.schedule_type || observation.is_paused) {
+    if (!swarm.schedule_type || swarm.is_paused) {
       continue;
     }
 
-    const cronExpression = getEffectiveCron(observation);
+    const cronExpression = getEffectiveCron(swarm);
     if (!cronExpression) {
       continue;
     }
@@ -140,44 +140,44 @@ export async function runScheduledObservations(
       continue;
     }
 
-    // Run this observation
+    // Run this swarm
     try {
-      const result = await runObservation(env, observation);
+      const result = await runSwarm(env, swarm);
       results.push({
-        observationId: observation.id,
+        swarmId: swarm.id,
         success: true,
         modelsRan: result.modelsRan,
       });
       ran++;
-      console.log(`Scheduled observation ${observation.id} ran successfully with ${result.modelsRan} models`);
+      console.log(`Scheduled swarm ${swarm.id} ran successfully with ${result.modelsRan} models`);
     } catch (err) {
       results.push({
-        observationId: observation.id,
+        swarmId: swarm.id,
         success: false,
         modelsRan: 0,
         error: err instanceof Error ? err.message : String(err),
       });
-      console.error(`Scheduled observation ${observation.id} failed:`, err);
+      console.error(`Scheduled swarm ${swarm.id} failed:`, err);
     }
   }
 
   return {
-    checked: observations.length,
+    checked: swarms.length,
     ran,
     results,
   };
 }
 
 /**
- * Run a single observation
+ * Run a single swarm
  */
-async function runObservation(
+async function runSwarm(
   env: Env,
-  observation: ObservationWithDetails
+  swarm: SwarmWithDetails
 ): Promise<{ modelsRan: number }> {
-  const modelIds = await getObservationVersionModels(env.DB, observation.id);
+  const modelIds = await getSwarmVersionModels(env.DB, swarm.id);
   if (modelIds.length === 0) {
-    throw new Error('Observation has no models configured');
+    throw new Error('Swarm has no models configured');
   }
 
   const promptId = crypto.randomUUID();
@@ -214,7 +214,7 @@ async function runObservation(
       const grounded = model.grounded === 1;
       const provider = createLLMProvider(model.id, model.provider, model.model_name, env, grounded);
       const start = Date.now();
-      const response = await provider.complete({ prompt: observation.prompt_text });
+      const response = await provider.complete({ prompt: swarm.prompt_text });
       latencyMs = Date.now() - start;
       responseContent = response.content;
       reasoningContent = response.reasoningContent ?? null;
@@ -234,12 +234,12 @@ async function runObservation(
       outputCost = (outputTokens / 1_000_000) * model.output_price_per_m;
     }
 
-    // Save to BigQuery
+    // Save to BigQuery (source is 'swarm' for new records, but use observation_id field for BQ compatibility)
     const bqRow: BigQueryRow = {
       id: crypto.randomUUID(),
       prompt_id: promptId,
       collected_at: collectedAt,
-      source: 'observation',
+      source: 'swarm',
       company: extractCompany(model.provider, model.model_name),
       product: extractProductFamily(model.model_name),
       model: model.model_name,
@@ -247,7 +247,7 @@ async function runObservation(
       topic_name: null,
       prompt_template_id: null,
       prompt_template_name: null,
-      prompt: observation.prompt_text,
+      prompt: swarm.prompt_text,
       response: responseContent,
       reasoning_content: reasoningContent,
       latency_ms: latencyMs,
@@ -257,12 +257,12 @@ async function runObservation(
       output_cost: outputCost,
       error: errorMsg,
       success: !errorMsg,
-      observation_id: observation.id,
-      observation_version: observation.current_version,
+      observation_id: swarm.id,
+      observation_version: swarm.current_version,
     };
 
     await insertRow(env, bqRow).catch((err) => {
-      console.error('Failed to save observation response to BigQuery:', err);
+      console.error('Failed to save swarm response to BigQuery:', err);
     });
 
     runResults.push({
@@ -275,10 +275,10 @@ async function runObservation(
   }
 
   // Store results in D1 for immediate access
-  await createObservationRun(env.DB, observation.id, observation.current_version, runResults);
+  await createSwarmRun(env.DB, swarm.id, swarm.current_version, runResults);
 
   // Update last_run_at
-  await updateObservationLastRunAt(env.DB, observation.id);
+  await updateSwarmLastRunAt(env.DB, swarm.id);
 
   return { modelsRan: runResults.length };
 }

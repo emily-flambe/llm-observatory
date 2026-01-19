@@ -16,11 +16,11 @@ interface ModelResult {
   startTime?: number;
 }
 
-interface ObservationFormProps {
+interface SwarmFormProps {
   editId?: string;
 }
 
-interface ObservationDetail {
+interface SwarmDetail {
   id: string;
   prompt_text: string;
   display_name: string | null;
@@ -36,12 +36,12 @@ interface ObservationDetail {
   tags: Array<{ id: string; name: string; color: string | null }>;
 }
 
-export default function ObservationForm({ editId }: ObservationFormProps) {
+export default function SwarmForm({ editId }: SwarmFormProps) {
   const [searchParams] = useSearchParams();
   const [models, setModels] = useState<Model[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingObservation, setLoadingObservation] = useState(false);
+  const [loadingSwarm, setLoadingSwarm] = useState(false);
 
   // Get initial values from query params (for duplication/pre-fill)
   const initialPrompt = searchParams.get('prompt') || '';
@@ -63,7 +63,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
   // Submission state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [results, setResults] = useState<Map<string, ModelResult>>(new Map());
-  const [createdObservationId, setCreatedObservationId] = useState<string | null>(null);
+  const [createdSwarmId, setCreatedSwarmId] = useState<string | null>(null);
   const [editSuccess, setEditSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState('');
@@ -93,7 +93,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
         setModels(modelList);
         setTags(tagsData.tags || []);
 
-        // Auto-select a preferred model per company (only for new observations)
+        // Auto-select a preferred model per company (only for new swarms)
         if (!editId) {
           const byCompany = new Map<string, Model>();
           for (const model of modelList) {
@@ -176,40 +176,40 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
       });
   }, [editId]);
 
-  // Load observation data when editing
+  // Load swarm data when editing
   useEffect(() => {
     if (!editId || loading) return;
 
-    setLoadingObservation(true);
-    fetch(`/api/observations/${editId}`)
-      .then((r) => r.json() as Promise<{ observation?: ObservationDetail; error?: string }>)
+    setLoadingSwarm(true);
+    fetch(`/api/swarms/${editId}`)
+      .then((r) => r.json() as Promise<{ swarm?: SwarmDetail; error?: string }>)
       .then((data) => {
-        if (data.error || !data.observation) {
-          setError(data.error || 'Observation not found');
-          setLoadingObservation(false);
+        if (data.error || !data.swarm) {
+          setError(data.error || 'Swarm not found');
+          setLoadingSwarm(false);
           return;
         }
 
-        const observation = data.observation;
-        setPrompt(observation.prompt_text);
-        setDisplayName(observation.display_name || '');
-        setSelectedModels(new Set(observation.models.map((m) => m.id)));
-        setSelectedTags(new Set(observation.tags.map((t) => t.id)));
+        const swarm = data.swarm;
+        setPrompt(swarm.prompt_text);
+        setDisplayName(swarm.display_name || '');
+        setSelectedModels(new Set(swarm.models.map((m) => m.id)));
+        setSelectedTags(new Set(swarm.tags.map((t) => t.id)));
 
-        if (observation.schedule_type) {
-          setScheduleType(observation.schedule_type);
-          if (observation.cron_expression) {
-            setCronExpression(observation.cron_expression);
+        if (swarm.schedule_type) {
+          setScheduleType(swarm.schedule_type);
+          if (swarm.cron_expression) {
+            setCronExpression(swarm.cron_expression);
           }
         } else {
           setScheduleType('none');
         }
 
-        setLoadingObservation(false);
+        setLoadingSwarm(false);
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : 'Failed to load observation');
-        setLoadingObservation(false);
+        setError(err instanceof Error ? err.message : 'Failed to load swarm');
+        setLoadingSwarm(false);
       });
   }, [editId, loading]);
 
@@ -291,8 +291,8 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
 
     try {
       if (isEditing && editId) {
-        // Update existing observation - no results display needed
-        const res = await fetch(`/api/observations/${editId}`, {
+        // Update existing swarm - no results display needed
+        const res = await fetch(`/api/swarms/${editId}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -321,15 +321,15 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
 
         if (!res.ok) {
           const data = (await res.json()) as { error?: string };
-          throw new Error(data.error || 'Failed to update observation');
+          throw new Error(data.error || 'Failed to update swarm');
         }
 
         setEditSuccess(true);
-        setCreatedObservationId(editId);
+        setCreatedSwarmId(editId);
       } else {
-        // Create mode - clear previous results and observation ID
+        // Create mode - clear previous results and swarm ID
         setResults(new Map());
-        setCreatedObservationId(null);
+        setCreatedSwarmId(null);
 
         const selectedModelsList = models.filter((m) => selectedModels.has(m.id));
 
@@ -346,7 +346,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
         setResults(initialResults);
 
         // Use streaming endpoint for progressive results
-        const res = await fetch('/api/observations/stream', {
+        const res = await fetch('/api/swarms/stream', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -379,7 +379,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
         if (!res.ok) {
           const data = (await res.json()) as { error?: string };
           setResults(new Map()); // Clear results on error
-          throw new Error(data.error || 'Failed to create observation');
+          throw new Error(data.error || 'Failed to create swarm');
         }
 
         // Process SSE stream for progressive results
@@ -403,13 +403,13 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
             if (line.startsWith('data: ')) {
               try {
                 const event = JSON.parse(line.slice(6)) as {
-                  type: 'observation' | 'result' | 'done';
-                  observation?: { id: string };
+                  type: 'swarm' | 'result' | 'done';
+                  swarm?: { id: string };
                   result?: { modelId: string; success: boolean; latencyMs?: number; error?: string; response?: string };
                 };
 
-                if (event.type === 'observation' && event.observation) {
-                  setCreatedObservationId(event.observation.id);
+                if (event.type === 'swarm' && event.swarm) {
+                  setCreatedSwarmId(event.swarm.id);
                 } else if (event.type === 'result' && event.result) {
                   const result = event.result;
                   const model = selectedModelsList.find((m) => m.id === result.modelId);
@@ -443,7 +443,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
     setIsSubmitting(false);
   };
 
-  if (loading || loadingObservation) {
+  if (loading || loadingSwarm) {
     return <div className="text-ink-muted">Loading...</div>;
   }
 
@@ -452,10 +452,10 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
       <div className="bg-white border border-border rounded-xl shadow-sm overflow-hidden">
         <div className="px-6 py-5 border-b border-border">
           <h2 className="text-lg font-medium text-ink">
-            {isEditing ? 'Edit Observation' : 'New Observation'}
+            {isEditing ? 'Edit Swarm' : 'New Swarm'}
           </h2>
           <p className="text-sm text-ink-muted mt-0.5">
-            {isEditing ? 'Update observation settings' : 'Create a new observation and query multiple LLMs'}
+            {isEditing ? 'Update swarm settings' : 'Create a new swarm and query multiple LLMs'}
           </p>
         </div>
 
@@ -466,14 +466,14 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
             </div>
           )}
 
-          {editSuccess && createdObservationId && (
+          {editSuccess && createdSwarmId && (
             <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-success text-sm flex items-center justify-between">
-              <span>Observation updated successfully.</span>
+              <span>Swarm updated successfully.</span>
               <Link
-                to={`/observe/${createdObservationId}`}
+                to={`/observe/${createdSwarmId}`}
                 className="text-amber hover:text-amber-light font-medium"
               >
-                View Observation &rarr;
+                View Swarm &rarr;
               </Link>
             </div>
           )}
@@ -545,7 +545,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="A friendly name for this observation"
+              placeholder="A friendly name for this swarm"
               className="w-full px-3 py-2.5 rounded-lg border border-border focus:border-amber focus:ring-1 focus:ring-amber"
             />
           </div>
@@ -696,7 +696,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
 
         {/* Footer with API key and submit button */}
         <div className="px-6 py-4 bg-paper-dark border-t border-border space-y-3">
-          {/* API key input - required for all observation operations */}
+          {/* API key input - required for all swarm operations */}
           <div className="space-y-1">
             <div className="flex items-center gap-3">
               <label htmlFor="apiKey" className="text-sm font-medium text-ink whitespace-nowrap">
@@ -710,7 +710,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
                   setApiKey(e.target.value);
                   setApiKeyError(null); // Clear error when user types
                 }}
-                placeholder={isEditing ? 'Required to save changes' : 'Required to run observation'}
+                placeholder={isEditing ? 'Required to save changes' : 'Required to release swarm'}
                 className={`flex-1 px-3 py-2 rounded-lg text-sm border focus:ring-1 ${
                   apiKeyError
                     ? 'border-error focus:border-error focus:ring-error'
@@ -733,7 +733,7 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
                 : 'Running...'
               : isEditing
                 ? 'Save Changes'
-                : `Run Observation (${selectedModels.size} model${selectedModels.size !== 1 ? 's' : ''})`}
+                : `Release the Swarm (${selectedModels.size} model${selectedModels.size !== 1 ? 's' : ''})`}
           </button>
         </div>
       </div>
@@ -743,9 +743,9 @@ export default function ObservationForm({ editId }: ObservationFormProps) {
         <div className="bg-white border border-border rounded-xl shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-border flex items-center justify-between">
             <h3 className="text-lg font-medium text-ink">Results</h3>
-            {createdObservationId && (
+            {createdSwarmId && (
               <Link
-                to={`/observe/${createdObservationId}`}
+                to={`/observe/${createdSwarmId}`}
                 className="text-sm text-amber hover:text-amber-light"
               >
                 View Full Details &rarr;
