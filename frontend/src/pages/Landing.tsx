@@ -283,6 +283,23 @@ export default function Landing() {
             <option value="knowledge_cutoff">Sort: Training Cutoff</option>
             <option value="name">Sort: Name</option>
           </select>
+
+          {/* Expand all / Collapse all */}
+          <div className="flex gap-2 text-xs">
+            <button
+              onClick={() => setExpandedCompanies(new Set(sortedCompanies))}
+              className="text-ink-muted hover:text-ink-light"
+            >
+              Expand all
+            </button>
+            <span className="text-border">|</span>
+            <button
+              onClick={() => setExpandedCompanies(new Set())}
+              className="text-ink-muted hover:text-ink-light"
+            >
+              Collapse all
+            </button>
+          </div>
         </div>
 
         {/* Model count */}
@@ -315,23 +332,33 @@ export default function Landing() {
 
               {/* Model list - only shown when expanded */}
               {isExpanded && (
-                <ul className="space-y-2 mt-3">
+                <ul className="space-y-1.5 mt-3">
                   {companyModels.map((model) => {
                     const url = getModelUrl(model);
                     return (
-                      <li key={model.id}>
-                        <div className="text-sm text-ink">{model.display_name}</div>
+                      <li key={model.id} className="p-2 rounded-lg hover:bg-paper-dark transition-colors">
+                        <div className="text-sm text-ink flex items-center gap-1.5">
+                          {model.display_name}
+                          {model.grounded === 1 && (
+                            <span
+                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700"
+                              title="Uses web search for real-time information"
+                            >
+                              Web
+                            </span>
+                          )}
+                        </div>
                         {url !== '#' ? (
                           <a
                             href={url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-xs text-amber hover:text-amber-light font-mono"
+                            className="text-xs text-amber hover:text-amber-light font-mono truncate block"
                           >
                             {model.model_name}
                           </a>
                         ) : (
-                          <div className="text-xs text-ink-muted font-mono">{model.model_name}</div>
+                          <div className="text-xs text-ink-muted font-mono truncate">{model.model_name}</div>
                         )}
                         {(model.released_at || model.knowledge_cutoff) && (
                           <div className="text-xs text-ink-muted mt-0.5">
