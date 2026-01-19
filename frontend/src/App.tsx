@@ -433,6 +433,14 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
           <span>
             {query.responses.length} model{query.responses.length !== 1 ? 's' : ''}
           </span>
+          {query.swarm_id && (
+            <Link
+              to={`/observe/${query.swarm_id}`}
+              className="text-amber hover:text-amber-dark"
+            >
+              View Swarm
+            </Link>
+          )}
         </div>
       </div>
       {expanded && (

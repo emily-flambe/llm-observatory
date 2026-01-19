@@ -906,6 +906,8 @@ api.get('/swarms/:id/responses', async (c) => {
     prompt: swarm.prompt_text,
     collected_at: run.run_at,
     source: 'swarm',
+    topic_name: null as string | null,
+    swarm_id: id as string | null,
     responses: run.results.map((r) => ({
       id: r.id,
       model: r.model_name ?? r.model_id,
@@ -914,6 +916,8 @@ api.get('/swarms/:id/responses', async (c) => {
       latency_ms: r.latency_ms,
       input_tokens: r.input_tokens,
       output_tokens: r.output_tokens,
+      input_cost: null as number | null,
+      output_cost: null as number | null,
       error: r.error,
       success: r.success === 1,
     })),
@@ -1225,6 +1229,8 @@ admin.post('/backfill-bigquery', async (c) => {
           output_cost: null,
           error: result.error,
           success: result.success === 1,
+          swarm_id: swarm.id,
+          swarm_version: run.swarm_version,
         };
 
         const insertResult = await insertRow(c.env, bqRow);

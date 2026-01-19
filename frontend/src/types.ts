@@ -101,6 +101,7 @@ export interface CollectionBatchResponse {
 
 // Prompt Lab history types
 export interface PromptLabResponse {
+  id: string;
   model: string;
   company: string;
   response: string | null;
@@ -119,6 +120,7 @@ export interface PromptLabQuery {
   prompt: string;
   topic_name: string | null;
   source: string;
+  swarm_id: string | null;
   responses: PromptLabResponse[];
 }
 

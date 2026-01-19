@@ -34,10 +34,12 @@ export interface BigQueryRow {
   output_cost: number | null; // USD cost for output tokens (null if pricing unknown)
   error: string | null;
   success: boolean;
-  collection_id?: string | null; // reference to D1 collection
-  collection_version?: number | null; // version at time of collection
-  observation_id?: string | null; // reference to D1 observation
-  observation_version?: number | null; // version at time of observation run
+  collection_id?: string | null; // reference to D1 collection (deprecated)
+  collection_version?: number | null; // version at time of collection (deprecated)
+  observation_id?: string | null; // deprecated - use swarm_id
+  observation_version?: number | null; // deprecated - use swarm_version
+  swarm_id?: string | null; // reference to D1 swarm
+  swarm_version?: number | null; // version at time of swarm run
 }
 
 export interface QueryResult {
@@ -330,8 +332,10 @@ export async function insertRow(
               success: row.success,
               collection_id: row.collection_id ?? null,
               collection_version: row.collection_version ?? null,
-              // Note: observation_id and observation_version are in the BigQueryRow type
-              // but not in the actual BigQuery schema, so we don't include them in inserts
+              observation_id: row.observation_id ?? null,
+              observation_version: row.observation_version ?? null,
+              swarm_id: row.swarm_id ?? null,
+              swarm_version: row.swarm_version ?? null,
             },
           },
         ],
@@ -664,7 +668,9 @@ export interface PromptLabQuery {
   prompt: string;
   topic_name: string | null;
   source: string;
+  swarm_id: string | null;
   responses: Array<{
+    id: string;
     model: string;
     company: string;
     response: string | null;
@@ -703,6 +709,7 @@ export async function getRecentPrompts(
       MAX(topic_name) as topic_name,
       MAX(source) as source,
       MAX(collected_at) as collected_at,
+      MAX(swarm_id) as swarm_id,
       ARRAY_AGG(STRUCT(
         id,
         model,
@@ -867,14 +874,15 @@ export async function getRecentPrompts(
       };
     }
 
-    // Parse the results - prompt_id, prompt, topic_name, source, collected_at, responses array
+    // Parse the results - prompt_id, prompt, topic_name, source, collected_at, swarm_id, responses array
     const prompts: PromptLabQuery[] = (result.rows ?? []).map((row) => {
       const prompt_id = row.f[0].v as string;
       const prompt = row.f[1].v as string;
       const topic_name = row.f[2].v as string | null;
       const source = row.f[3].v as string;
       const collected_at = row.f[4].v as string;
-      const responsesArray = row.f[5].v as Array<{ v: { f: Array<{ v: unknown }> } }>;
+      const swarm_id = row.f[5].v as string | null;
+      const responsesArray = row.f[6].v as Array<{ v: { f: Array<{ v: unknown }> } }>;
 
       const responses = (responsesArray ?? []).map((r) => {
         const fields = r.v.f;
@@ -901,6 +909,7 @@ export async function getRecentPrompts(
         prompt,
         topic_name,
         source,
+        swarm_id,
         responses,
       };
     });
@@ -1041,6 +1050,7 @@ export async function getCollectionResponses(
         prompt,
         topic_name,
         source,
+        swarm_id: null, // Collections don't have swarm_id
         responses,
       };
     });
@@ -1178,6 +1188,7 @@ export async function getObservationResponses(
         prompt,
         topic_name,
         source,
+        swarm_id: null, // Legacy observations don't have swarm_id
         responses,
       };
     });
@@ -1268,7 +1279,12 @@ export async function getObservationResponsesById(
       };
     }
 
-    const result = (await response.json()) as BigQueryQueryResponse;
+    const result = (await response.json()) as {
+      errors?: Array<{ message: string }>;
+      rows?: Array<{
+        f: Array<{ v: unknown }>;
+      }>;
+    };
 
     if (result.errors) {
       return {
@@ -1311,6 +1327,7 @@ export async function getObservationResponsesById(
         prompt,
         topic_name,
         source,
+        swarm_id: null, // Legacy observations don't have swarm_id
         responses,
       };
     });
