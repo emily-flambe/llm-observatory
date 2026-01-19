@@ -103,9 +103,6 @@ UPDATE models SET description = 'Gemini 2.5 Flash Image Preview offers early acc
 
 UPDATE models SET description = 'Gemini 3 Pro Image Preview showcases advanced image generation with the Pro model. Features higher quality output and better instruction following.' WHERE id = 'google-gemini-3-pro-image-preview';
 
--- Legacy Google model (keeping for backward compatibility)
-UPDATE models SET description = 'Gemini 2.0 Flash is Google''s fast multimodal model with native image, audio, and code capabilities. Features a 1M token context window and efficient performance.' WHERE id = 'google-gemini-flash';
-
 -- OpenAI GPT Models
 UPDATE models SET description = 'GPT-3.5 Turbo is OpenAI''s efficient general-purpose model. Offers fast responses for basic tasks like summarization, translation, and simple coding at low cost.' WHERE id = 'openai-gpt-3-5-turbo';
 
@@ -115,9 +112,9 @@ UPDATE models SET description = 'GPT-3.5 Turbo 1106 introduced JSON mode and imp
 
 UPDATE models SET description = 'GPT-3.5 Turbo 16K offers extended 16K context window for longer documents. Suitable for summarization and analysis of longer texts.' WHERE id = 'openai-gpt-3-5-turbo-16k';
 
-UPDATE models SET description = 'GPT-4 is OpenAI''s breakthrough reasoning model with 8K context. Excels at complex analysis, coding, and nuanced text generation with strong safety features.' WHERE id = 'openai-gpt-4';
+UPDATE models SET description = 'GPT-4 is OpenAI''s breakthrough reasoning model available in 8K and 32K context variants. Excels at complex analysis, coding, and nuanced text generation with strong safety features.' WHERE id = 'openai-gpt-4';
 
-UPDATE models SET description = 'GPT-4 Turbo combines GPT-4''s intelligence with faster responses and lower cost. Features 128K context and knowledge up to April 2023.' WHERE id = 'openai-gpt-4-turbo';
+UPDATE models SET description = 'GPT-4 Turbo combines GPT-4''s intelligence with faster responses and lower cost. Features 128K context and knowledge up to December 2023.' WHERE id = 'openai-gpt-4-turbo';
 
 UPDATE models SET description = 'GPT-4 Turbo 2024.04.09 is a versioned release with improved consistency. Recommended for production applications requiring stable behavior.' WHERE id = 'openai-gpt-4-turbo-2024-04-09';
 
@@ -200,7 +197,7 @@ UPDATE models SET description = 'O1 Pro 2025.03.19 is a versioned release of O1 
 
 UPDATE models SET description = 'O1 2024.12.17 is a versioned release of the O1 reasoning model for production stability.' WHERE id = 'openai-o1-2024-12-17';
 
-UPDATE models SET description = 'O3 is OpenAI''s next-generation reasoning model with breakthrough performance on ARC-AGI and competition math. Features multimodal reasoning and tool use.' WHERE id = 'openai-o3';
+UPDATE models SET description = 'O3 is OpenAI''s next-generation reasoning model with strong performance on ARC-AGI benchmarks and competition math. Features multimodal reasoning and tool use.' WHERE id = 'openai-o3';
 
 UPDATE models SET description = 'O3 Mini balances O3 reasoning capabilities with faster responses and lower cost. Ideal for applications needing strong reasoning at scale.' WHERE id = 'openai-o3-mini';
 
@@ -237,7 +234,15 @@ UPDATE models SET description = 'Grok 4.1 Fast Reasoning balances Grok 4.1''s im
 
 UPDATE models SET description = 'Grok Code Fast 1 is optimized for coding tasks with rapid responses. Excels at code completion, debugging, and technical explanations.' WHERE id = 'xai-grok-code-fast-1';
 
--- Additional local/seed model IDs with simplified naming
-UPDATE models SET description = 'Claude Sonnet 4.5 offers near-Opus performance with faster response times. Excels at coding, data analysis, and document processing with excellent price-performance ratio.' WHERE id = 'anthropic-claude-sonnet';
+-- Perplexity Models
+UPDATE models SET description = 'Perplexity Sonar is an AI assistant built for search, providing fast, accurate answers with real-time web access and source citations.' WHERE id = 'perplexity-sonar';
 
-UPDATE models SET description = 'GPT-5.2 is OpenAI''s latest flagship model with state-of-the-art reasoning, coding, and multimodal capabilities. Features improved safety and efficiency.' WHERE id = 'openai-gpt52';
+UPDATE models SET description = 'Perplexity Sonar Grounded enhances Sonar with additional grounding capabilities for more factual, citation-backed responses with current information.' WHERE id = 'perplexity-sonar-grounded';
+
+UPDATE models SET description = 'Perplexity Sonar Pro offers enhanced capabilities over standard Sonar with improved reasoning, longer context, and better synthesis of complex information.' WHERE id = 'perplexity-sonar-pro';
+
+UPDATE models SET description = 'Perplexity Sonar Pro Grounded combines Pro capabilities with grounded responses, providing high-quality answers with strong source attribution.' WHERE id = 'perplexity-sonar-pro-grounded';
+
+UPDATE models SET description = 'Perplexity Sonar Reasoning Pro features step-by-step reasoning for complex questions, combining search capabilities with transparent analytical thinking.' WHERE id = 'perplexity-sonar-reasoning-pro';
+
+UPDATE models SET description = 'Perplexity Sonar Reasoning Pro Grounded combines reasoning capabilities with grounding for well-sourced, logically transparent answers to complex queries.' WHERE id = 'perplexity-sonar-reasoning-pro-grounded';
