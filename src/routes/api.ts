@@ -31,8 +31,11 @@ import {
   getCollectionResponses,
   insertRow,
   deleteRowsBySearch,
+  deleteSwarmRecordsWithNullId,
   extractProductFamily,
   extractCompany,
+  getObservationResponsesById,
+  updateSwarmIdByPrompt,
   type BigQueryRow,
 } from '../services/bigquery';
 import { requireAccess } from '../middleware/access';
@@ -342,7 +345,34 @@ api.get('/prompts', async (c) => {
     return c.json({ error: result.error }, 500);
   }
 
-  return c.json({ prompts: result.data });
+  // For swarm records with null swarm_id, look up the swarm from D1 by prompt text
+  const prompts = result.data;
+  const swarmRecordsNeedingLookup = prompts.filter(
+    (p) => p.source === 'swarm' && !p.swarm_id
+  );
+
+  if (swarmRecordsNeedingLookup.length > 0) {
+    // Get all swarms from D1
+    const swarms = await getSwarms(c.env.DB, { includeDisabled: true });
+
+    // Create a map of prompt_text -> swarm_id
+    const promptToSwarmId = new Map<string, string>();
+    for (const swarm of swarms) {
+      promptToSwarmId.set(swarm.prompt_text, swarm.id);
+    }
+
+    // Update the records
+    for (const prompt of prompts) {
+      if (prompt.source === 'swarm' && !prompt.swarm_id) {
+        const swarmId = promptToSwarmId.get(prompt.prompt);
+        if (swarmId) {
+          prompt.swarm_id = swarmId;
+        }
+      }
+    }
+  }
+
+  return c.json({ prompts });
 });
 
 // ==================== Swarms ====================
@@ -444,13 +474,11 @@ async function runSwarmInternal(
       observation_id: swarm.id,
       observation_version: swarm.current_version,
     };
-    insertRow(env, bqRow).then((result) => {
-      if (!result.success) {
-        console.error('Failed to save swarm response to BigQuery:', result.error);
-      }
-    }).catch((err) => {
-      console.error('BigQuery insert exception:', err);
-    });
+    // Await the BigQuery insert to ensure it completes before worker terminates
+    const bqResult = await insertRow(env, bqRow);
+    if (!bqResult.success) {
+      console.error('Failed to save swarm response to BigQuery:', bqResult.error);
+    }
 
     return errorMsg
       ? ({ modelId, success: false, error: errorMsg } as const)
@@ -886,7 +914,7 @@ api.put('/swarms/:id/restore', async (c) => {
   return c.json({ success: true });
 });
 
-// Get responses for a specific swarm (swarm history)
+// Get responses for a specific swarm (swarm history from D1 and BigQuery)
 api.get('/swarms/:id/responses', async (c) => {
   const { id } = c.req.param();
   const limitParam = c.req.query('limit');
@@ -901,12 +929,14 @@ api.get('/swarms/:id/responses', async (c) => {
   // Get runs from D1 (immediate, no BigQuery streaming delay)
   const runs = await getSwarmRuns(c.env.DB, id, limit);
 
-  // Transform to match expected format
-  const prompts = runs.map((run) => ({
+  // Transform D1 runs to match expected format
+  const d1Prompts = runs.map((run) => ({
     id: run.id,
     prompt: swarm.prompt_text,
     collected_at: run.run_at,
     source: 'swarm',
+    topic_name: null as string | null,
+    swarm_id: id as string | null,
     responses: run.results.map((r) => ({
       id: r.id,
       model: r.model_name ?? r.model_id,
@@ -915,12 +945,40 @@ api.get('/swarms/:id/responses', async (c) => {
       latency_ms: r.latency_ms,
       input_tokens: r.input_tokens,
       output_tokens: r.output_tokens,
+      input_cost: null as number | null,
+      output_cost: null as number | null,
       error: r.error,
       success: r.success === 1,
     })),
   }));
 
-  return c.json({ prompts });
+  // Also query BigQuery for historical data (runs before D1 storage was implemented)
+  // This ensures we don't lose data from before the observation_runs table existed
+  const bqResult = await getObservationResponsesById(c.env, id, { limit });
+
+  let allPrompts = d1Prompts;
+
+  if (bqResult.success && bqResult.data) {
+    // Get set of D1 prompt IDs to deduplicate
+    const d1PromptIds = new Set(d1Prompts.map((p) => p.id));
+
+    // Add BigQuery results that aren't already in D1
+    const uniqueBqPrompts = bqResult.data.filter((p) => !d1PromptIds.has(p.id));
+
+    // Combine and sort by collected_at descending
+    allPrompts = [...d1Prompts, ...uniqueBqPrompts].sort((a, b) => {
+      const dateA = new Date(a.collected_at).getTime();
+      const dateB = new Date(b.collected_at).getTime();
+      return dateB - dateA;
+    });
+
+    // Apply limit after combining
+    if (allPrompts.length > limit) {
+      allPrompts = allPrompts.slice(0, limit);
+    }
+  }
+
+  return c.json({ prompts: allPrompts });
 });
 
 // ==================== Prompt Templates ====================
@@ -1161,6 +1219,109 @@ admin.use('*', requireAccess);
 admin.get('/rate-limits', async (c) => {
   const status = await getRateLimitStatus(c.env.DB);
   return c.json(status);
+});
+
+// Backfill BigQuery from D1 swarm runs
+admin.post('/backfill-bigquery', async (c) => {
+  const swarms = await getSwarms(c.env.DB, { includeDisabled: true });
+  let totalInserted = 0;
+  let totalFailed = 0;
+  const errors: string[] = [];
+
+  for (const swarm of swarms) {
+    const runs = await getSwarmRuns(c.env.DB, swarm.id, 100);
+
+    for (const run of runs) {
+      // Generate a deterministic prompt_id from run.id so we can dedupe
+      const promptId = run.id;
+
+      for (const result of run.results) {
+        const bqRow: BigQueryRow = {
+          id: crypto.randomUUID(),
+          prompt_id: promptId,
+          collected_at: run.run_at,
+          source: 'swarm',
+          company: result.company || extractCompany(result.model_name || '', result.model_name || ''),
+          product: extractProductFamily(result.model_name || ''),
+          model: result.model_name || result.model_id,
+          topic_id: null,
+          topic_name: null,
+          prompt_template_id: null,
+          prompt_template_name: null,
+          prompt: swarm.prompt_text,
+          response: result.response,
+          reasoning_content: null,
+          latency_ms: result.latency_ms,
+          input_tokens: result.input_tokens || 0,
+          output_tokens: result.output_tokens || 0,
+          input_cost: null,
+          output_cost: null,
+          error: result.error,
+          success: result.success === 1,
+          swarm_id: swarm.id,
+          swarm_version: run.swarm_version,
+        };
+
+        const insertResult = await insertRow(c.env, bqRow);
+        if (insertResult.success) {
+          totalInserted++;
+        } else {
+          totalFailed++;
+          if (errors.length < 10) {
+            errors.push(`${swarm.id}/${run.id}: ${insertResult.error}`);
+          }
+        }
+      }
+    }
+  }
+
+  return c.json({
+    swarmsProcessed: swarms.length,
+    totalInserted,
+    totalFailed,
+    errors,
+  });
+});
+
+// Delete swarm records with null swarm_id (for cleanup before re-running backfill)
+admin.post('/delete-null-swarm-records', async (c) => {
+  const result = await deleteSwarmRecordsWithNullId(c.env);
+  if (!result.success) {
+    return c.json({ success: false, error: result.error }, 500);
+  }
+  return c.json({ success: true, deletedRows: result.data.deletedRows });
+});
+
+// Update swarm_id in BigQuery for existing records
+admin.post('/update-swarm-ids', async (c) => {
+  const swarms = await getSwarms(c.env.DB, { includeDisabled: true });
+  let totalUpdated = 0;
+  const results: Array<{ swarmId: string; promptText: string; updatedRows: number; error?: string }> = [];
+
+  for (const swarm of swarms) {
+    const updateResult = await updateSwarmIdByPrompt(c.env, swarm.prompt_text, swarm.id);
+    if (updateResult.success) {
+      totalUpdated += updateResult.data.updatedRows;
+      results.push({
+        swarmId: swarm.id,
+        promptText: swarm.prompt_text.substring(0, 50) + '...',
+        updatedRows: updateResult.data.updatedRows,
+      });
+    } else {
+      results.push({
+        swarmId: swarm.id,
+        promptText: swarm.prompt_text.substring(0, 50) + '...',
+        updatedRows: 0,
+        error: updateResult.error,
+      });
+    }
+  }
+
+  return c.json({
+    swarmsProcessed: swarms.length,
+    totalUpdated,
+    results,
+  });
 });
 
 // Smoke test - verify all LLM APIs are working

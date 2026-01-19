@@ -234,7 +234,7 @@ async function runSwarm(
       outputCost = (outputTokens / 1_000_000) * model.output_price_per_m;
     }
 
-    // Save to BigQuery (source is 'swarm' for new records, but use observation_id field for BQ compatibility)
+    // Save to BigQuery
     const bqRow: BigQueryRow = {
       id: crypto.randomUUID(),
       prompt_id: promptId,
@@ -257,13 +257,14 @@ async function runSwarm(
       output_cost: outputCost,
       error: errorMsg,
       success: !errorMsg,
-      observation_id: swarm.id,
-      observation_version: swarm.current_version,
+      swarm_id: swarm.id,
+      swarm_version: swarm.current_version,
     };
 
-    await insertRow(env, bqRow).catch((err) => {
-      console.error('Failed to save swarm response to BigQuery:', err);
-    });
+    const bqResult = await insertRow(env, bqRow);
+    if (!bqResult.success) {
+      console.error('Failed to save swarm response to BigQuery:', bqResult.error);
+    }
 
     runResults.push({
       modelId,

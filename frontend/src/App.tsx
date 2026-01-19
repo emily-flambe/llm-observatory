@@ -416,31 +416,33 @@ function PromptCard({ query }: { query: PromptLabQuery }) {
 
   return (
     <div className="bg-white border border-border rounded-lg p-4">
-      <div className="space-y-1">
-        {/* Row 1: Prompt + Expand */}
-        <div className="flex items-start justify-between gap-4">
-          <p className="text-sm text-ink line-clamp-2 flex-1 min-w-0">{query.prompt}</p>
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="text-xs text-amber hover:text-amber-dark shrink-0"
-          >
-            {expanded ? 'Collapse' : 'Expand'}
-          </button>
-        </div>
-        {/* Row 2: Metadata + Manage */}
-        <div className="flex items-center justify-between">
+      <div className="flex justify-between gap-4">
+        {/* Left: Prompt and metadata */}
+        <div className="space-y-1 flex-1 min-w-0">
+          <p className="text-sm text-ink line-clamp-2">{query.prompt}</p>
           <div className="flex items-center gap-3 text-xs text-ink-muted">
             <span>{date.toLocaleDateString()}</span>
             <span>
               {query.responses.length} model{query.responses.length !== 1 ? 's' : ''}
             </span>
           </div>
-          <Link
-            to={`/swarm?prompt=${encodeURIComponent(query.prompt)}`}
+        </div>
+        {/* Right: Expand and View Swarm */}
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <button
+            onClick={() => setExpanded(!expanded)}
             className="text-xs text-amber hover:text-amber-dark"
           >
-            Manage
-          </Link>
+            {expanded ? 'Collapse' : 'Expand'}
+          </button>
+          {query.swarm_id && (
+            <Link
+              to={`/swarm/${query.swarm_id}`}
+              className="text-xs text-amber hover:text-amber-dark"
+            >
+              View Swarm
+            </Link>
+          )}
         </div>
       </div>
       {expanded && (
@@ -637,25 +639,8 @@ function PromptsContent({
     onFilterChange({ search: searchInput });
   };
 
-  // Source filter: when both or neither are checked, show all (don't filter)
-  // When only one is checked, filter to that source
-  const sourceFilterActive = filters.sources.length === 1;
-
   const hasActiveFilters =
-    filters.models.length > 0 || filters.companies.length > 0 || filters.topics.length > 0 || sourceFilterActive;
-
-  // Toggle source checkbox - both checked = show all, one checked = filter to that source
-  const toggleSource = (source: string) => {
-    if (filters.sources.includes(source)) {
-      // Unchecking this source
-      const newSources = filters.sources.filter((s) => s !== source);
-      onFilterChange({ sources: newSources });
-    } else {
-      // Checking this source
-      const newSources = [...filters.sources, source];
-      onFilterChange({ sources: newSources });
-    }
-  };
+    filters.models.length > 0 || filters.companies.length > 0 || filters.topics.length > 0;
 
   return (
     <>
@@ -686,31 +671,10 @@ function PromptsContent({
           getValue={(o) => (typeof o === 'string' ? o : o.value)}
         />
 
-        {/* Source checkboxes */}
-        <div className="flex items-center gap-3 px-2">
-          <label className="flex items-center gap-1.5 text-sm text-ink cursor-pointer">
-            <input
-              type="checkbox"
-              checked={filters.sources.includes('swarm')}
-              onChange={() => toggleSource('swarm')}
-              className="rounded border-border text-amber focus:ring-amber"
-            />
-            Swarms
-          </label>
-          <label className="flex items-center gap-1.5 text-sm text-ink cursor-pointer">
-            <input
-              type="checkbox"
-              checked={filters.sources.includes('prompt-lab')}
-              onChange={() => toggleSource('prompt-lab')}
-              className="rounded border-border text-amber focus:ring-amber"
-            />
-            Ad Hoc
-          </label>
-        </div>
 
         {hasActiveFilters && (
           <button
-            onClick={() => onFilterChange({ models: [], companies: [], topics: [], sources: ['swarm', 'prompt-lab'] })}
+            onClick={() => onFilterChange({ models: [], companies: [], topics: [] })}
             className="px-3 py-2 text-sm text-ink-muted hover:text-ink"
           >
             Clear filters
@@ -781,19 +745,12 @@ function HistoryPromptsPage() {
   const parseArray = (param: string | null): string[] =>
     param ? param.split(',').filter(Boolean) : [];
 
-  // Parse sources from URL, default to both checked (show all)
-  const parseSources = (param: string | null): string[] => {
-    if (param === null) return ['swarm', 'prompt-lab']; // Default: both checked
-    const sources = param.split(',').filter(Boolean);
-    return sources.length > 0 ? sources : ['swarm', 'prompt-lab'];
-  };
-
   const filters: FilterParams = {
     search: searchParams.get('search') || '',
     models: parseArray(searchParams.get('models')),
     companies: parseArray(searchParams.get('companies')),
     topics: parseArray(searchParams.get('topics')),
-    sources: parseSources(searchParams.get('sources')),
+    sources: [], // No source filtering - show all
   };
 
   const handleFilterChange = (newFilters: Partial<FilterParams>) => {
@@ -803,15 +760,11 @@ function HistoryPromptsPage() {
     if (updated.models.length > 0) params.set('models', updated.models.join(','));
     if (updated.companies.length > 0) params.set('companies', updated.companies.join(','));
     if (updated.topics.length > 0) params.set('topics', updated.topics.join(','));
-    // Only persist sources to URL if not both selected (both = default = no param needed)
-    if (updated.sources.length === 1 || updated.sources.length === 0) {
-      params.set('sources', updated.sources.join(','));
-    }
     setSearchParams(params);
   };
 
   // Create a key from all filter params to reset component state when any filter changes
-  const filterKey = `${filters.search}-${filters.models.join(',')}-${filters.companies.join(',')}-${filters.topics.join(',')}-${filters.sources.join(',')}`;
+  const filterKey = `${filters.search}-${filters.models.join(',')}-${filters.companies.join(',')}-${filters.topics.join(',')}`;
 
   return (
     <div>
