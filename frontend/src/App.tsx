@@ -780,6 +780,8 @@ function HistoryPromptsPage() {
   );
 }
 
+const EXECUTIONS_PER_PAGE = 20;
+
 function SwarmDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [swarm, setSwarm] = useState<Collection | null>(null);
@@ -792,6 +794,7 @@ function SwarmDetailPage() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [showDisableConfirm, setShowDisableConfirm] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const loadData = useCallback(() => {
     if (!id) return;
@@ -836,6 +839,19 @@ function SwarmDetailPage() {
       }))
       .sort((a, b) => parseBigQueryTimestamp(b.collectedAt).getTime() - parseBigQueryTimestamp(a.collectedAt).getTime());
   }, [prompts]);
+
+  // Pagination calculations
+  const totalPages = Math.ceil(executionGroups.length / EXECUTIONS_PER_PAGE);
+  const paginatedGroups = useMemo(() => {
+    const startIndex = (currentPage - 1) * EXECUTIONS_PER_PAGE;
+    const endIndex = startIndex + EXECUTIONS_PER_PAGE;
+    return executionGroups.slice(startIndex, endIndex);
+  }, [executionGroups, currentPage]);
+
+  // Reset to page 1 when executions change (e.g., new run)
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [executionGroups.length]);
 
   const toggleExecution = (promptId: string) => {
     setExpandedExecutions((prev) => {
@@ -1131,57 +1147,83 @@ function SwarmDetailPage() {
           No executions yet. Click "Run Now" to collect responses.
         </div>
       ) : (
-        <div className="space-y-3">
-          {executionGroups.map((group) => (
-            <div key={group.promptId} className="border border-border rounded-lg overflow-hidden">
-              <button
-                onClick={() => toggleExecution(group.promptId)}
-                className="w-full px-4 py-3 bg-paper-dark flex items-center justify-between hover:bg-paper-darker transition-colors text-left"
-              >
-                <div className="flex items-center gap-4 text-sm">
-                  <span className="font-medium text-ink">{formatLocalTime(group.collectedAt)}</span>
-                  <span className="text-ink-muted">{group.responseCount} responses</span>
-                </div>
-                <span className="text-ink-muted">{expandedExecutions.has(group.promptId) ? '▼' : '▶'}</span>
-              </button>
-              {expandedExecutions.has(group.promptId) && (
-                <div className="p-4 space-y-3 bg-white">
-                  {group.queries.flatMap((query) =>
-                    query.responses.map((resp, i) => (
-                      <div key={`${query.id}-${i}`} className="bg-paper rounded-lg p-4 border border-border">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-ink">{resp.model}</span>
-                            <span className="text-xs text-ink-muted">({resp.company})</span>
-                          </div>
-                          {resp.success && (
-                            <div className="flex items-center gap-3 text-xs text-ink-muted">
-                              <span>{resp.latency_ms}ms</span>
-                              {resp.input_tokens > 0 && <span>{resp.input_tokens + resp.output_tokens} tokens</span>}
-                              {(resp.input_cost !== null || resp.output_cost !== null) && (
-                                <span className="text-green-600">
-                                  ${((resp.input_cost || 0) + (resp.output_cost || 0)).toFixed(6)}
-                                </span>
-                              )}
+        <>
+          <div className="space-y-3">
+            {paginatedGroups.map((group) => (
+              <div key={group.promptId} className="border border-border rounded-lg overflow-hidden">
+                <button
+                  onClick={() => toggleExecution(group.promptId)}
+                  className="w-full px-4 py-3 bg-paper-dark flex items-center justify-between hover:bg-paper-darker transition-colors text-left"
+                >
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="font-medium text-ink">{formatLocalTime(group.collectedAt)}</span>
+                    <span className="text-ink-muted">{group.responseCount} responses</span>
+                  </div>
+                  <span className="text-ink-muted">{expandedExecutions.has(group.promptId) ? '▼' : '▶'}</span>
+                </button>
+                {expandedExecutions.has(group.promptId) && (
+                  <div className="p-4 space-y-3 bg-white">
+                    {group.queries.flatMap((query) =>
+                      query.responses.map((resp, i) => (
+                        <div key={`${query.id}-${i}`} className="bg-paper rounded-lg p-4 border border-border">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-ink">{resp.model}</span>
+                              <span className="text-xs text-ink-muted">({resp.company})</span>
                             </div>
+                            {resp.success && (
+                              <div className="flex items-center gap-3 text-xs text-ink-muted">
+                                <span>{resp.latency_ms}ms</span>
+                                {resp.input_tokens > 0 && <span>{resp.input_tokens + resp.output_tokens} tokens</span>}
+                                {(resp.input_cost !== null || resp.output_cost !== null) && (
+                                  <span className="text-green-600">
+                                    ${((resp.input_cost || 0) + (resp.output_cost || 0)).toFixed(6)}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          {resp.success ? (
+                            <div
+                              className="text-sm text-ink markdown-content"
+                              // Content is sanitized by renderMarkdown
+                              dangerouslySetInnerHTML={{ __html: renderMarkdown(resp.response || '') }}
+                            />
+                          ) : (
+                            <p className="text-sm text-error">{resp.error}</p>
                           )}
                         </div>
-                        {resp.success ? (
-                          <div
-                            className="text-sm text-ink markdown-content"
-                            dangerouslySetInnerHTML={{ __html: renderMarkdown(resp.response || '') }}
-                          />
-                        ) : (
-                          <p className="text-sm text-error">{resp.error}</p>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Pagination controls - only show if more than one page */}
+          {totalPages > 1 && (
+            <div className="mt-6 flex items-center justify-center gap-4">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-paper disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-ink-muted">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-paper disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </div>
   );
