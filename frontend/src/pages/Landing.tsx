@@ -176,7 +176,7 @@ export default function Landing() {
         >
           <h3 className="font-semibold text-ink mb-2">Create</h3>
           <p className="text-sm text-ink-muted">
-            Run prompts across models, save swarms, schedule recurring runs.
+            RELEASE THE SWARM.
           </p>
         </Link>
         <Link
