@@ -25,6 +25,7 @@ interface SwarmDetail {
   prompt_text: string;
   display_name: string | null;
   disabled: number;
+  hide_from_history: number;
   created_at: string;
   last_run_at: string | null;
   current_version: number;
@@ -59,6 +60,7 @@ export default function SwarmForm({ editId }: SwarmFormProps) {
   const [cronExpression, setCronExpression] = useState(initialCron || '0 6 * * *');
   const [wordLimit, setWordLimit] = useState('50');
   const [useWordLimit, setUseWordLimit] = useState(true);
+  const [hideFromHistory, setHideFromHistory] = useState(false);
 
   // Submission state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -205,6 +207,9 @@ export default function SwarmForm({ editId }: SwarmFormProps) {
           setScheduleType('none');
         }
 
+        // Set hide from history toggle
+        setHideFromHistory(swarm.hide_from_history === 1);
+
         setLoadingSwarm(false);
       })
       .catch((err) => {
@@ -304,6 +309,7 @@ export default function SwarmForm({ editId }: SwarmFormProps) {
             tag_ids: Array.from(selectedTags),
             schedule_type: scheduleType === 'none' ? null : scheduleType,
             cron_expression: finalCron,
+            hide_from_history: hideFromHistory,
           }),
         });
 
@@ -692,6 +698,35 @@ export default function SwarmForm({ editId }: SwarmFormProps) {
               </p>
             )}
           </div>
+
+          {/* Hide from History toggle - only shown in edit mode */}
+          {isEditing && (
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-ink flex items-center">
+                History Visibility
+                <span className="relative group ml-1">
+                  <span className="w-4 h-4 inline-flex items-center justify-center rounded-full border border-ink-muted text-ink-muted text-xs cursor-help">
+                    ?
+                  </span>
+                  <span className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-white bg-ink rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                    Hidden swarms don't appear in the History view by default
+                  </span>
+                </span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="hideFromHistory"
+                  checked={hideFromHistory}
+                  onChange={(e) => setHideFromHistory(e.target.checked)}
+                  className="rounded border-border text-amber focus:ring-amber"
+                />
+                <label htmlFor="hideFromHistory" className="text-sm text-ink-light">
+                  Hide this swarm's prompts from History view
+                </label>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer with API key and submit button */}
