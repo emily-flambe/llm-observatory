@@ -6,6 +6,7 @@ import { GoogleProvider } from './google';
 import { CloudflareProvider } from './cloudflare';
 import { XAIProvider } from './xai';
 import { DeepSeekProvider } from './deepseek';
+import { PerplexityProvider } from './perplexity';
 
 export function createLLMProvider(
   modelId: string,
@@ -27,6 +28,8 @@ export function createLLMProvider(
       return new XAIProvider(modelId, modelName, env.XAI_API_KEY, grounded);
     case 'deepseek':
       return new DeepSeekProvider(modelId, modelName, env.DEEPSEEK_API_KEY);
+    case 'perplexity':
+      return new PerplexityProvider(modelId, modelName, env.PERPLEXITY_API_KEY, grounded);
     default:
       throw new Error(`Unknown provider: ${provider}`);
   }
