@@ -1,13 +1,32 @@
 /**
  * Swarm scheduler service
  * Runs scheduled swarms based on their cron expressions
+ *
+ * IDEMPOTENCY: Cloudflare may invoke cron triggers from multiple data centers
+ * simultaneously. We deduplicate using a two-phase approach:
+ *
+ * 1. Quick check: Skip if last_run_at already falls within the current minute
+ * 2. Atomic claim: Use SQL UPDATE with WHERE clause (compare-and-swap pattern)
+ *    to ensure only ONE worker succeeds in claiming a swarm for execution
+ *
+ * The atomic claim uses: UPDATE ... WHERE last_run_at IS NULL OR last_run_at < ?
+ * This ensures that even if multiple workers pass the quick check (due to read
+ * timing or D1 replication lag), only one will successfully claim the swarm.
+ *
+ * D1 CONSISTENCY NOTE: D1 provides strong consistency within a single region but
+ * may have eventual consistency across regions. This means workers in different
+ * regions could potentially both read stale data (last_run_at = null) before
+ * either update propagates. The atomic claim mitigates this at the write level,
+ * but in extreme cases with significant replication lag, duplicates could still
+ * occur. For most use cases, this is acceptable. For strict exactly-once
+ * semantics, consider using D1's primary region hint or Durable Objects.
  */
 
 import type { Env } from '../types/env';
 import {
   getSwarms,
   getSwarmVersionModels,
-  updateSwarmLastRunAt,
+  claimSwarmExecution,
   createSwarmRun,
   type SwarmWithDetails,
 } from './swarms';
@@ -96,6 +115,28 @@ function getEffectiveCron(swarm: SwarmWithDetails): string | null {
 }
 
 /**
+ * Check if a swarm already ran in the current minute (for idempotency)
+ * Returns true if the swarm should be skipped because it already ran
+ * Exported for testing.
+ */
+export function alreadyRanInCurrentMinute(
+  lastRunAt: string | null,
+  scheduledTime: Date
+): boolean {
+  if (!lastRunAt) return false;
+
+  const lastRun = new Date(lastRunAt);
+  // Compare year, month, day, hour, minute (ignore seconds/milliseconds)
+  return (
+    lastRun.getUTCFullYear() === scheduledTime.getUTCFullYear() &&
+    lastRun.getUTCMonth() === scheduledTime.getUTCMonth() &&
+    lastRun.getUTCDate() === scheduledTime.getUTCDate() &&
+    lastRun.getUTCHours() === scheduledTime.getUTCHours() &&
+    lastRun.getUTCMinutes() === scheduledTime.getUTCMinutes()
+  );
+}
+
+/**
  * Run all scheduled swarms that are due
  * @param env - Environment bindings
  * @param scheduledTime - The time the cron trigger fired (not the execution time)
@@ -137,6 +178,26 @@ export async function runScheduledSwarms(
 
     // Check if cron matches the scheduled trigger time (not current execution time)
     if (!cronMatchesNow(cronExpression, scheduledTime)) {
+      continue;
+    }
+
+    // IDEMPOTENCY CHECK: Skip if swarm already ran in the current minute
+    // This handles Cloudflare invoking cron from multiple data centers
+    if (alreadyRanInCurrentMinute(swarm.last_run_at, scheduledTime)) {
+      console.log(
+        `Skipping swarm ${swarm.id}: already ran at ${swarm.last_run_at} (scheduled for ${scheduledTime.toISOString()})`
+      );
+      continue;
+    }
+
+    // ATOMIC CLAIM: Try to claim this swarm for execution using compare-and-swap
+    // Only ONE worker will succeed when multiple workers try to claim the same minute
+    const claimed = await claimSwarmExecution(env.DB, swarm.id, scheduledTime);
+    if (!claimed) {
+      // Another worker already claimed this swarm for this scheduled time
+      console.log(
+        `Skipping swarm ${swarm.id}: lost race to another worker (atomic claim failed)`
+      );
       continue;
     }
 
@@ -278,8 +339,8 @@ async function runSwarm(
   // Store results in D1 for immediate access
   await createSwarmRun(env.DB, swarm.id, swarm.current_version, runResults);
 
-  // Update last_run_at
-  await updateSwarmLastRunAt(env.DB, swarm.id);
+  // NOTE: last_run_at is now updated BEFORE execution in runScheduledSwarms()
+  // to prevent duplicate runs from concurrent cron triggers
 
   return { modelsRan: runResults.length };
 }

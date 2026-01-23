@@ -10,6 +10,7 @@ import {
   deleteSwarm,
   restoreSwarm,
   updateSwarmLastRunAt,
+  claimSwarmExecution,
 } from '../../src/services/swarms';
 
 // Helper to create mock D1 database
@@ -550,6 +551,59 @@ describe('Swarm Storage Functions', () => {
       // First value should be an ISO timestamp
       expect(typeof boundValues[0]).toBe('string');
       expect((boundValues[0] as string).match(/^\d{4}-\d{2}-\d{2}T/)).toBeTruthy();
+    });
+  });
+
+  describe('claimSwarmExecution', () => {
+    it('returns true when claim succeeds (row updated)', async () => {
+      mockDb._mockStatement.run.mockResolvedValue({ meta: { changes: 1 } });
+
+      const timestamp = new Date('2026-01-19T17:25:00.000Z');
+      const result = await claimSwarmExecution(mockDb, 'swarm-123', timestamp);
+
+      expect(result).toBe(true);
+      expect(mockDb.prepare).toHaveBeenCalledWith(
+        expect.stringContaining('UPDATE observations SET last_run_at = ?')
+      );
+      expect(mockDb.prepare).toHaveBeenCalledWith(
+        expect.stringContaining('last_run_at IS NULL OR last_run_at < ?')
+      );
+    });
+
+    it('returns false when claim fails (another worker already claimed)', async () => {
+      mockDb._mockStatement.run.mockResolvedValue({ meta: { changes: 0 } });
+
+      const timestamp = new Date('2026-01-19T17:25:00.000Z');
+      const result = await claimSwarmExecution(mockDb, 'swarm-123', timestamp);
+
+      expect(result).toBe(false);
+    });
+
+    it('binds timestamp as ISO string to all three parameters', async () => {
+      mockDb._mockStatement.run.mockResolvedValue({ meta: { changes: 1 } });
+
+      const timestamp = new Date('2026-01-19T17:25:00.000Z');
+      await claimSwarmExecution(mockDb, 'swarm-123', timestamp);
+
+      const boundValues = mockDb._getLastBoundValues();
+      // Should bind: (ts, id, ts) - timestamp for SET, swarm id, timestamp for WHERE
+      expect(boundValues).toEqual([
+        '2026-01-19T17:25:00.000Z',
+        'swarm-123',
+        '2026-01-19T17:25:00.000Z',
+      ]);
+    });
+
+    it('uses compare-and-swap pattern with WHERE clause', async () => {
+      mockDb._mockStatement.run.mockResolvedValue({ meta: { changes: 1 } });
+
+      const timestamp = new Date('2026-01-19T17:25:00.000Z');
+      await claimSwarmExecution(mockDb, 'swarm-123', timestamp);
+
+      // Verify the SQL uses proper CAS pattern
+      expect(mockDb.prepare).toHaveBeenCalledWith(
+        expect.stringMatching(/UPDATE.*WHERE.*AND.*\(last_run_at IS NULL OR last_run_at < \?\)/)
+      );
     });
   });
 });
