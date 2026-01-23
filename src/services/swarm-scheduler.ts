@@ -3,16 +3,30 @@
  * Runs scheduled swarms based on their cron expressions
  *
  * IDEMPOTENCY: Cloudflare may invoke cron triggers from multiple data centers
- * simultaneously. We deduplicate by checking last_run_at before execution and
- * updating it atomically before starting work.
+ * simultaneously. We deduplicate using a two-phase approach:
+ *
+ * 1. Quick check: Skip if last_run_at already falls within the current minute
+ * 2. Atomic claim: Use SQL UPDATE with WHERE clause (compare-and-swap pattern)
+ *    to ensure only ONE worker succeeds in claiming a swarm for execution
+ *
+ * The atomic claim uses: UPDATE ... WHERE last_run_at IS NULL OR last_run_at < ?
+ * This ensures that even if multiple workers pass the quick check (due to read
+ * timing or D1 replication lag), only one will successfully claim the swarm.
+ *
+ * D1 CONSISTENCY NOTE: D1 provides strong consistency within a single region but
+ * may have eventual consistency across regions. This means workers in different
+ * regions could potentially both read stale data (last_run_at = null) before
+ * either update propagates. The atomic claim mitigates this at the write level,
+ * but in extreme cases with significant replication lag, duplicates could still
+ * occur. For most use cases, this is acceptable. For strict exactly-once
+ * semantics, consider using D1's primary region hint or Durable Objects.
  */
 
 import type { Env } from '../types/env';
 import {
-  getSwarm,
   getSwarms,
   getSwarmVersionModels,
-  updateSwarmLastRunAt,
+  claimSwarmExecution,
   createSwarmRun,
   type SwarmWithDetails,
 } from './swarms';
@@ -103,8 +117,9 @@ function getEffectiveCron(swarm: SwarmWithDetails): string | null {
 /**
  * Check if a swarm already ran in the current minute (for idempotency)
  * Returns true if the swarm should be skipped because it already ran
+ * Exported for testing.
  */
-function alreadyRanInCurrentMinute(
+export function alreadyRanInCurrentMinute(
   lastRunAt: string | null,
   scheduledTime: Date
 ): boolean {
@@ -175,20 +190,13 @@ export async function runScheduledSwarms(
       continue;
     }
 
-    // Update last_run_at BEFORE execution to prevent races from concurrent triggers
-    // Use scheduledTime (not current time) so all triggers in the same minute see the same value
-    await updateSwarmLastRunAt(env.DB, swarm.id, scheduledTime);
-
-    // Re-fetch swarm to check if another worker beat us (double-check after update)
-    const freshSwarm = await getSwarm(env.DB, swarm.id);
-    if (
-      freshSwarm &&
-      freshSwarm.last_run_at &&
-      new Date(freshSwarm.last_run_at).getTime() !== scheduledTime.getTime()
-    ) {
-      // Another worker updated last_run_at to a different time - they won the race
+    // ATOMIC CLAIM: Try to claim this swarm for execution using compare-and-swap
+    // Only ONE worker will succeed when multiple workers try to claim the same minute
+    const claimed = await claimSwarmExecution(env.DB, swarm.id, scheduledTime);
+    if (!claimed) {
+      // Another worker already claimed this swarm for this scheduled time
       console.log(
-        `Skipping swarm ${swarm.id}: lost race to another worker (last_run_at=${freshSwarm.last_run_at})`
+        `Skipping swarm ${swarm.id}: lost race to another worker (atomic claim failed)`
       );
       continue;
     }

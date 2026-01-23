@@ -348,10 +348,37 @@ export async function restoreSwarm(db: D1Database, id: string): Promise<boolean>
 }
 
 /**
- * Update last_run_at timestamp for a swarm
+ * Atomically claim a swarm for execution using compare-and-swap pattern.
+ * Only succeeds if last_run_at is null or strictly before the target timestamp.
+ *
+ * @param db - D1 database instance
+ * @param id - Swarm ID
+ * @param timestamp - The scheduled execution time
+ * @returns true if this worker claimed the swarm, false if another worker already did
+ */
+export async function claimSwarmExecution(
+  db: D1Database,
+  id: string,
+  timestamp: Date
+): Promise<boolean> {
+  const ts = timestamp.toISOString();
+  // Atomic compare-and-swap: only update if last_run_at is null or strictly less than target time
+  // This ensures only ONE worker succeeds when multiple workers try to claim the same minute
+  const result = await db
+    .prepare(
+      'UPDATE observations SET last_run_at = ? WHERE id = ? AND (last_run_at IS NULL OR last_run_at < ?)'
+    )
+    .bind(ts, id, ts)
+    .run();
+  return result.meta.changes > 0;
+}
+
+/**
+ * Update last_run_at timestamp for a swarm (unconditional update)
  * @param db - D1 database instance
  * @param id - Swarm ID
  * @param timestamp - Optional timestamp to use (defaults to current time)
+ * @deprecated Use claimSwarmExecution for atomic race-safe updates during cron execution
  */
 export async function updateSwarmLastRunAt(
   db: D1Database,
