@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import type { Model } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 // Format date as "Jan 2024" or return as-is if parsing fails
 function formatDate(dateStr: string): string {
@@ -14,6 +15,7 @@ function formatDate(dateStr: string): string {
 type SortOption = 'name' | 'released_at' | 'knowledge_cutoff';
 
 export default function Landing() {
+  const { isAuthenticated } = useAuth();
   const [models, setModels] = useState<Model[]>([]);
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedCompanies, setSelectedCompanies] = useState<Set<string>>(new Set());
@@ -169,25 +171,29 @@ export default function Landing() {
       </section>
 
       {/* Features */}
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Link
-          to="/swarm"
-          className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
-        >
-          <h3 className="font-semibold text-ink mb-2">Create</h3>
-          <p className="text-sm text-ink-muted">
-            RELEASE THE SWARM.
-          </p>
-        </Link>
-        <Link
-          to="/swarm/manage"
-          className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
-        >
-          <h3 className="font-semibold text-ink mb-2">Manage</h3>
-          <p className="text-sm text-ink-muted">
-            View, edit, and manage your saved swarms.
-          </p>
-        </Link>
+      <section className={`grid gap-4 sm:grid-cols-2 ${isAuthenticated ? 'lg:grid-cols-4' : 'lg:grid-cols-2'}`}>
+        {isAuthenticated && (
+          <>
+            <Link
+              to="/swarm"
+              className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
+            >
+              <h3 className="font-semibold text-ink mb-2">Create</h3>
+              <p className="text-sm text-ink-muted">
+                RELEASE THE SWARM.
+              </p>
+            </Link>
+            <Link
+              to="/swarm/manage"
+              className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
+            >
+              <h3 className="font-semibold text-ink mb-2">Manage</h3>
+              <p className="text-sm text-ink-muted">
+                View, edit, and manage your saved swarms.
+              </p>
+            </Link>
+          </>
+        )}
         <Link
           to="/history"
           className="bg-white border border-border rounded-lg p-5 hover:border-amber transition-colors"
