@@ -11,6 +11,8 @@ import {
   restoreSwarm,
   updateSwarmLastRunAt,
   claimSwarmExecution,
+  claimScheduledRun,
+  cleanupOldScheduledRunClaims,
 } from '../../src/services/swarms';
 
 // Helper to create mock D1 database
@@ -604,6 +606,96 @@ describe('Swarm Storage Functions', () => {
       expect(mockDb.prepare).toHaveBeenCalledWith(
         expect.stringMatching(/UPDATE.*WHERE.*AND.*\(last_run_at IS NULL OR last_run_at < \?\)/)
       );
+    });
+  });
+
+  describe('claimScheduledRun', () => {
+    it('returns true when claim succeeds (INSERT completes)', async () => {
+      mockDb._mockStatement.run.mockResolvedValue({ meta: { changes: 1 } });
+
+      const scheduledTime = new Date('2026-01-22T06:00:00.000Z');
+      const result = await claimScheduledRun(mockDb, 'swarm-123', scheduledTime);
+
+      expect(result).toBe(true);
+      expect(mockDb.prepare).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO scheduled_run_claims')
+      );
+    });
+
+    it('returns false when claim fails due to UNIQUE constraint', async () => {
+      const uniqueError = new Error('UNIQUE constraint failed: scheduled_run_claims.swarm_id, scheduled_run_claims.scheduled_for');
+      mockDb._mockStatement.run.mockRejectedValue(uniqueError);
+
+      const scheduledTime = new Date('2026-01-22T06:00:00.000Z');
+      const result = await claimScheduledRun(mockDb, 'swarm-123', scheduledTime);
+
+      expect(result).toBe(false);
+    });
+
+    it('re-throws non-UNIQUE constraint errors', async () => {
+      const otherError = new Error('Database connection failed');
+      mockDb._mockStatement.run.mockRejectedValue(otherError);
+
+      const scheduledTime = new Date('2026-01-22T06:00:00.000Z');
+      await expect(claimScheduledRun(mockDb, 'swarm-123', scheduledTime)).rejects.toThrow('Database connection failed');
+    });
+
+    it('truncates timestamp to minute precision', async () => {
+      mockDb._mockStatement.run.mockResolvedValue({ meta: { changes: 1 } });
+
+      // Include seconds and milliseconds
+      const scheduledTime = new Date('2026-01-22T06:00:45.123Z');
+      await claimScheduledRun(mockDb, 'swarm-123', scheduledTime);
+
+      const boundValues = mockDb._getLastBoundValues();
+      // scheduled_for should be truncated to minute (no seconds)
+      expect(boundValues[2]).toBe('2026-01-22T06:00');
+    });
+
+    it('allows same swarm to be claimed for different minutes', async () => {
+      mockDb._mockStatement.run.mockResolvedValue({ meta: { changes: 1 } });
+
+      // First claim at 06:00
+      const time1 = new Date('2026-01-22T06:00:00.000Z');
+      const result1 = await claimScheduledRun(mockDb, 'swarm-123', time1);
+      expect(result1).toBe(true);
+
+      // Second claim at 06:01 (different minute, should succeed)
+      const time2 = new Date('2026-01-22T06:01:00.000Z');
+      const result2 = await claimScheduledRun(mockDb, 'swarm-123', time2);
+      expect(result2).toBe(true);
+    });
+  });
+
+  describe('cleanupOldScheduledRunClaims', () => {
+    it('deletes claims older than 7 days by default', async () => {
+      mockDb._mockStatement.run.mockResolvedValue({ meta: { changes: 50 } });
+
+      const result = await cleanupOldScheduledRunClaims(mockDb);
+
+      expect(result).toBe(50);
+      expect(mockDb.prepare).toHaveBeenCalledWith(
+        expect.stringContaining('DELETE FROM scheduled_run_claims WHERE scheduled_for < ?')
+      );
+    });
+
+    it('accepts custom cutoff date', async () => {
+      mockDb._mockStatement.run.mockResolvedValue({ meta: { changes: 10 } });
+
+      const customCutoff = new Date('2026-01-15T00:00:00.000Z');
+      const result = await cleanupOldScheduledRunClaims(mockDb, customCutoff);
+
+      expect(result).toBe(10);
+      const boundValues = mockDb._getLastBoundValues();
+      expect(boundValues[0]).toBe('2026-01-15T00:00');
+    });
+
+    it('returns 0 when no claims to delete', async () => {
+      mockDb._mockStatement.run.mockResolvedValue({ meta: { changes: 0 } });
+
+      const result = await cleanupOldScheduledRunClaims(mockDb);
+
+      expect(result).toBe(0);
     });
   });
 });

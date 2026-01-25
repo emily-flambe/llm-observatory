@@ -360,6 +360,71 @@ export async function restoreSwarm(db: D1Database, id: string): Promise<boolean>
 }
 
 /**
+ * Truncate a timestamp to minute precision for deduplication.
+ * Returns format like "2026-01-22T06:00" (no seconds/milliseconds).
+ */
+function truncateToMinute(date: Date): string {
+  return date.toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
+}
+
+/**
+ * Claim a scheduled swarm run using INSERT with UNIQUE constraint.
+ * This is more robust than compare-and-swap because UNIQUE constraints
+ * are enforced atomically by SQLite, even with D1's eventual consistency.
+ *
+ * @param db - D1 database instance
+ * @param swarmId - Swarm ID
+ * @param scheduledTime - The scheduled execution time (will be truncated to minute)
+ * @returns true if this worker claimed the run, false if another worker already did
+ */
+export async function claimScheduledRun(
+  db: D1Database,
+  swarmId: string,
+  scheduledTime: Date
+): Promise<boolean> {
+  const scheduledFor = truncateToMinute(scheduledTime);
+  const claimId = crypto.randomUUID();
+  const claimedAt = new Date().toISOString();
+
+  try {
+    await db
+      .prepare(
+        'INSERT INTO scheduled_run_claims (id, swarm_id, scheduled_for, claimed_at) VALUES (?, ?, ?, ?)'
+      )
+      .bind(claimId, swarmId, scheduledFor, claimedAt)
+      .run();
+    return true;
+  } catch (error) {
+    // UNIQUE constraint violation means another worker already claimed this run
+    if (error instanceof Error && error.message.includes('UNIQUE constraint failed')) {
+      return false;
+    }
+    // Re-throw unexpected errors
+    throw error;
+  }
+}
+
+/**
+ * Clean up old scheduled run claims to prevent unbounded table growth.
+ * Call this periodically (e.g., once per day).
+ *
+ * @param db - D1 database instance
+ * @param olderThan - Delete claims older than this date (default: 7 days ago)
+ */
+export async function cleanupOldScheduledRunClaims(
+  db: D1Database,
+  olderThan?: Date
+): Promise<number> {
+  const cutoff = olderThan ?? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const cutoffStr = truncateToMinute(cutoff);
+  const result = await db
+    .prepare('DELETE FROM scheduled_run_claims WHERE scheduled_for < ?')
+    .bind(cutoffStr)
+    .run();
+  return result.meta.changes;
+}
+
+/**
  * Atomically claim a swarm for execution using compare-and-swap pattern.
  * Only succeeds if last_run_at is null or strictly before the target timestamp.
  *
@@ -367,6 +432,7 @@ export async function restoreSwarm(db: D1Database, id: string): Promise<boolean>
  * @param id - Swarm ID
  * @param timestamp - The scheduled execution time
  * @returns true if this worker claimed the swarm, false if another worker already did
+ * @deprecated Use claimScheduledRun for robust deduplication with UNIQUE constraint
  */
 export async function claimSwarmExecution(
   db: D1Database,
