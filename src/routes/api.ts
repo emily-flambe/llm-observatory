@@ -31,6 +31,7 @@ import {
   getCollectionResponses,
   insertRow,
   deleteRowsBySearch,
+  deleteRowsFromDate,
   deleteSwarmRecordsWithNullId,
   extractProductFamily,
   extractCompany,
@@ -1416,6 +1417,26 @@ admin.delete('/prompts', async (c) => {
   }
 
   return c.json({ success: true, deletedRows: result.data.deletedRows });
+});
+
+// Delete prompt history from a specific date onwards
+admin.delete('/prompts/from-date', async (c) => {
+  const fromDate = c.req.query('date');
+  if (!fromDate) {
+    return c.json({ error: 'date query parameter is required (format: YYYY-MM-DD)' }, 400);
+  }
+
+  // Validate date format
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDate)) {
+    return c.json({ error: 'date must be in YYYY-MM-DD format' }, 400);
+  }
+
+  const result = await deleteRowsFromDate(c.env, fromDate);
+  if (!result.success) {
+    return c.json({ error: result.error }, 500);
+  }
+
+  return c.json({ success: true, deletedRows: result.data.deletedRows, fromDate });
 });
 
 // Get recent sync logs
