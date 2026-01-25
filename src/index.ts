@@ -6,6 +6,7 @@ import { syncAllProviders } from './services/model-sync';
 import { syncBasellmMetadata } from './services/basellm';
 import { runScheduledCollections } from './services/collection-scheduler';
 import { runScheduledSwarms } from './services/swarm-scheduler';
+import { cleanupOldScheduledRunClaims } from './services/swarms';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -35,9 +36,17 @@ export default {
     const hour = scheduledTime.getUTCHours();
     const minute = scheduledTime.getUTCMinutes();
 
-    // Model sync runs once at 6:00 AM UTC (hour=6, minute=0)
+    // Daily maintenance at 6:00 AM UTC (hour=6, minute=0)
     if (hour === 6 && minute === 0) {
       ctx.waitUntil(fullModelSync(env));
+      // Clean up old scheduled run claims (older than 7 days)
+      ctx.waitUntil(
+        cleanupOldScheduledRunClaims(env.DB).then((deleted) => {
+          if (deleted > 0) {
+            console.log(`Cleaned up ${deleted} old scheduled run claims`);
+          }
+        })
+      );
     }
 
     // Collection scheduler runs every minute (checks cron expressions)

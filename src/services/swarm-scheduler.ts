@@ -3,29 +3,26 @@
  * Runs scheduled swarms based on their cron expressions
  *
  * IDEMPOTENCY: Cloudflare may invoke cron triggers from multiple data centers
- * simultaneously. We deduplicate using a two-phase approach:
+ * simultaneously. We deduplicate using a DUAL CLAIM approach:
  *
  * 1. Quick check: Skip if last_run_at already falls within the current minute
- * 2. Atomic claim: Use SQL UPDATE with WHERE clause (compare-and-swap pattern)
- *    to ensure only ONE worker succeeds in claiming a swarm for execution
+ * 2. INSERT claim: Insert into scheduled_run_claims with UNIQUE(swarm_id, scheduled_for)
+ * 3. CAS claim: UPDATE last_run_at with compare-and-swap pattern
  *
- * The atomic claim uses: UPDATE ... WHERE last_run_at IS NULL OR last_run_at < ?
- * This ensures that even if multiple workers pass the quick check (due to read
- * timing or D1 replication lag), only one will successfully claim the swarm.
+ * Both claims must succeed. This provides:
+ * - UNIQUE constraint: Robust against D1 eventual consistency across regions
+ * - CAS claim: Backward compatibility with old code versions during deployment
  *
- * D1 CONSISTENCY NOTE: D1 provides strong consistency within a single region but
- * may have eventual consistency across regions. This means workers in different
- * regions could potentially both read stale data (last_run_at = null) before
- * either update propagates. The atomic claim mitigates this at the write level,
- * but in extreme cases with significant replication lag, duplicates could still
- * occur. For most use cases, this is acceptable. For strict exactly-once
- * semantics, consider using D1's primary region hint or Durable Objects.
+ * During deployments, both old and new code versions may run. Old versions only
+ * use CAS, new versions use both. By requiring both to succeed, we ensure only
+ * one worker (regardless of version) can execute the swarm.
  */
 
 import type { Env } from '../types/env';
 import {
   getSwarms,
   getSwarmVersionModels,
+  claimScheduledRun,
   claimSwarmExecution,
   createSwarmRun,
   type SwarmWithDetails,
@@ -182,7 +179,7 @@ export async function runScheduledSwarms(
     }
 
     // IDEMPOTENCY CHECK: Skip if swarm already ran in the current minute
-    // This handles Cloudflare invoking cron from multiple data centers
+    // This is a fast path to avoid unnecessary claim attempts
     if (alreadyRanInCurrentMinute(swarm.last_run_at, scheduledTime)) {
       console.log(
         `Skipping swarm ${swarm.id}: already ran at ${swarm.last_run_at} (scheduled for ${scheduledTime.toISOString()})`
@@ -190,13 +187,28 @@ export async function runScheduledSwarms(
       continue;
     }
 
-    // ATOMIC CLAIM: Try to claim this swarm for execution using compare-and-swap
-    // Only ONE worker will succeed when multiple workers try to claim the same minute
-    const claimed = await claimSwarmExecution(env.DB, swarm.id, scheduledTime);
-    if (!claimed) {
-      // Another worker already claimed this swarm for this scheduled time
+    // DUAL CLAIM MECHANISM: Use both approaches for backward compatibility
+    // 1. UNIQUE constraint claim (robust against D1 eventual consistency)
+    // 2. Compare-and-swap claim (backward compat with old code versions)
+    // Both must succeed to proceed - this ensures coordination between
+    // different code versions that might be running during deployments
+
+    // Try INSERT-based claim first (UNIQUE constraint)
+    const claimedViaInsert = await claimScheduledRun(env.DB, swarm.id, scheduledTime);
+    if (!claimedViaInsert) {
       console.log(
-        `Skipping swarm ${swarm.id}: lost race to another worker (atomic claim failed)`
+        `Skipping swarm ${swarm.id}: lost race to another worker (UNIQUE constraint)`
+      );
+      continue;
+    }
+
+    // Also try compare-and-swap claim to update last_run_at
+    // This blocks old code versions that only check last_run_at
+    const claimedViaCAS = await claimSwarmExecution(env.DB, swarm.id, scheduledTime);
+    if (!claimedViaCAS) {
+      // INSERT succeeded but CAS failed - another (old) worker already claimed
+      console.log(
+        `Skipping swarm ${swarm.id}: INSERT succeeded but CAS failed (old code version won)`
       );
       continue;
     }
