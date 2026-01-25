@@ -7,6 +7,10 @@ import { syncBasellmMetadata } from './services/basellm';
 import { runScheduledCollections } from './services/collection-scheduler';
 import { runScheduledSwarms } from './services/swarm-scheduler';
 import { cleanupOldScheduledRunClaims } from './services/swarms';
+import { SwarmSchedulerDO, getSchedulerDO, truncateToMinute } from './services/scheduler-do';
+
+// Export Durable Object class for Cloudflare
+export { SwarmSchedulerDO };
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -39,13 +43,24 @@ export default {
     // Daily maintenance at 6:00 AM UTC (hour=6, minute=0)
     if (hour === 6 && minute === 0) {
       ctx.waitUntil(fullModelSync(env));
-      // Clean up old scheduled run claims (older than 7 days)
+      // Clean up old scheduled run claims from D1 (older than 7 days)
       ctx.waitUntil(
         cleanupOldScheduledRunClaims(env.DB).then((deleted) => {
           if (deleted > 0) {
-            console.log(`Cleaned up ${deleted} old scheduled run claims`);
+            console.log(`Cleaned up ${deleted} old D1 scheduled run claims`);
           }
         })
+      );
+      // Clean up old claims from Durable Object (older than 1 hour)
+      ctx.waitUntil(
+        (async () => {
+          const cutoff = new Date(Date.now() - 60 * 60 * 1000); // 1 hour ago
+          const scheduler = getSchedulerDO(env.SWARM_SCHEDULER);
+          const deleted = await scheduler.cleanupOldClaims(truncateToMinute(cutoff));
+          if (deleted > 0) {
+            console.log(`Cleaned up ${deleted} old DO scheduled run claims`);
+          }
+        })()
       );
     }
 

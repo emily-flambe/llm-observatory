@@ -33,6 +33,15 @@ binding = "DB"
 database_name = "llm-observatory-db"
 database_id = "43f364e4-fd30-4ddf-b068-de171232eddf"
 
+# Durable Objects for scheduling deduplication
+[[durable_objects.bindings]]
+name = "SWARM_SCHEDULER"
+class_name = "SwarmSchedulerDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SwarmSchedulerDO"]
+
 [dev]
 port = 8787
 

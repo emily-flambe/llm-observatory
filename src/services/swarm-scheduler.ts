@@ -3,19 +3,19 @@
  * Runs scheduled swarms based on their cron expressions
  *
  * IDEMPOTENCY: Cloudflare may invoke cron triggers from multiple data centers
- * simultaneously. We deduplicate using a DUAL CLAIM approach:
+ * simultaneously. We deduplicate using a DURABLE OBJECT for strong consistency:
  *
  * 1. Quick check: Skip if last_run_at already falls within the current minute
- * 2. INSERT claim: Insert into scheduled_run_claims with UNIQUE(swarm_id, scheduled_for)
- * 3. CAS claim: UPDATE last_run_at with compare-and-swap pattern
+ * 2. DO claim: Claim via SwarmSchedulerDO (atomic, single-instance guarantee)
+ * 3. D1 claims: Best-effort D1 claims for backward compat and audit trail
  *
- * Both claims must succeed. This provides:
- * - UNIQUE constraint: Robust against D1 eventual consistency across regions
- * - CAS claim: Backward compatibility with old code versions during deployment
+ * The Durable Object provides:
+ * - Single-instance execution: All requests route to one location
+ * - Strong consistency: No eventual consistency issues
+ * - Atomic operations: Race conditions are impossible
  *
- * During deployments, both old and new code versions may run. Old versions only
- * use CAS, new versions use both. By requiring both to succeed, we ensure only
- * one worker (regardless of version) can execute the swarm.
+ * D1 claims are maintained for audit purposes and backward compatibility
+ * during deployment transitions, but the DO claim is authoritative.
  */
 
 import type { Env } from '../types/env';
@@ -35,6 +35,7 @@ import {
   extractCompany,
   type BigQueryRow,
 } from './bigquery';
+import { getSchedulerDO, truncateToMinute } from './scheduler-do';
 
 /**
  * Check if a cron expression matches the current UTC time
@@ -187,30 +188,33 @@ export async function runScheduledSwarms(
       continue;
     }
 
-    // DUAL CLAIM MECHANISM: Use both approaches for backward compatibility
-    // 1. UNIQUE constraint claim (robust against D1 eventual consistency)
-    // 2. Compare-and-swap claim (backward compat with old code versions)
-    // Both must succeed to proceed - this ensures coordination between
-    // different code versions that might be running during deployments
+    // DURABLE OBJECT CLAIM: Use DO for strong consistency across regions
+    // The DO provides atomic operations with a single instance, eliminating
+    // the eventual consistency issues that plague D1-based claims.
+    //
+    // We also maintain D1 claims for:
+    // 1. Backward compatibility during deployment transitions
+    // 2. Audit trail of what ran when
+    const scheduledMinute = truncateToMinute(scheduledTime);
+    const scheduler = getSchedulerDO(env.SWARM_SCHEDULER);
 
-    // Try INSERT-based claim first (UNIQUE constraint)
-    const claimedViaInsert = await claimScheduledRun(env.DB, swarm.id, scheduledTime);
-    if (!claimedViaInsert) {
+    // Primary claim via Durable Object (strong consistency)
+    const claimedViaDO = await scheduler.claimExecution(swarm.id, scheduledMinute);
+    if (!claimedViaDO) {
       console.log(
-        `Skipping swarm ${swarm.id}: lost race to another worker (UNIQUE constraint)`
+        `Skipping swarm ${swarm.id}: lost race to another worker (DO claim)`
       );
       continue;
     }
 
-    // Also try compare-and-swap claim to update last_run_at
-    // This blocks old code versions that only check last_run_at
-    const claimedViaCAS = await claimSwarmExecution(env.DB, swarm.id, scheduledTime);
-    if (!claimedViaCAS) {
-      // INSERT succeeded but CAS failed - another (old) worker already claimed
-      console.log(
-        `Skipping swarm ${swarm.id}: INSERT succeeded but CAS failed (old code version won)`
-      );
-      continue;
+    // Secondary claims via D1 for backward compatibility and audit
+    // These are best-effort - the DO claim is authoritative
+    try {
+      await claimScheduledRun(env.DB, swarm.id, scheduledTime);
+      await claimSwarmExecution(env.DB, swarm.id, scheduledTime);
+    } catch (error) {
+      // D1 claims are non-critical since DO is authoritative
+      console.warn(`D1 claim failed for swarm ${swarm.id} (non-critical):`, error);
     }
 
     // Run this swarm
