@@ -91,6 +91,9 @@ name = "SWARM_SCHEDULER"
 class_name = "SwarmSchedulerDO"
 script_name = "llm-observatory"
 
+[env.preview.ai]
+binding = "AI"
+
 [env.preview.vars]
 BQ_PROJECT_ID = "emilys-personal-projects"
 BQ_DATASET_ID = "llm_observatory"
