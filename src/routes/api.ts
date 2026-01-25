@@ -184,6 +184,130 @@ async function runCollectionInternal(
 // Health check
 api.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
+// ==================== Auth Endpoints ====================
+
+// Extract Access JWT from header or cookie
+function getAccessJwt(req: { header: (name: string) => string | undefined }): string | undefined {
+  let jwt = req.header('Cf-Access-Jwt-Assertion');
+  if (!jwt) {
+    const cookies = req.header('Cookie') || '';
+    const match = cookies.match(/CF_Authorization=([^;]+)/);
+    if (match) {
+      jwt = match[1];
+    }
+  }
+  return jwt;
+}
+
+// Verify Cloudflare Access JWT and extract email
+async function verifyAccessJwt(
+  jwt: string | undefined,
+  teamDomain: string | undefined,
+  aud: string | undefined
+): Promise<{ valid: boolean; email?: string }> {
+  if (!jwt || !teamDomain || !aud) {
+    return { valid: false };
+  }
+
+  try {
+    const certsUrl = `${teamDomain}/cdn-cgi/access/certs`;
+    const certsResponse = await fetch(certsUrl);
+    if (!certsResponse.ok) {
+      console.error('Failed to fetch Access certs');
+      return { valid: false };
+    }
+
+    const certs = await certsResponse.json<{ keys: JsonWebKey[] }>();
+    const [headerB64] = jwt.split('.');
+    const header = JSON.parse(atob(headerB64.replace(/-/g, '+').replace(/_/g, '/')));
+    const kid = header.kid;
+
+    const key = certs.keys.find((k: JsonWebKey & { kid?: string }) => k.kid === kid);
+    if (!key) {
+      console.error('No matching key found for JWT');
+      return { valid: false };
+    }
+
+    const cryptoKey = await crypto.subtle.importKey(
+      'jwk',
+      key,
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+      false,
+      ['verify']
+    );
+
+    const [, payloadB64, signatureB64] = jwt.split('.');
+    const signatureInput = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
+    const signature = Uint8Array.from(
+      atob(signatureB64.replace(/-/g, '+').replace(/_/g, '/')),
+      (c) => c.charCodeAt(0)
+    );
+
+    const valid = await crypto.subtle.verify(
+      'RSASSA-PKCS1-v1_5',
+      cryptoKey,
+      signature,
+      signatureInput
+    );
+
+    if (!valid) {
+      return { valid: false };
+    }
+
+    const payload = JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')));
+
+    if (payload.aud && !payload.aud.includes(aud)) {
+      console.error('JWT audience mismatch');
+      return { valid: false };
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp && payload.exp < now) {
+      console.error('JWT expired');
+      return { valid: false };
+    }
+
+    return { valid: true, email: payload.email };
+  } catch (error) {
+    console.error('JWT verification error:', error);
+    return { valid: false };
+  }
+}
+
+// Get auth status - returns whether user is authenticated and their email
+api.get('/auth/status', async (c) => {
+  const accessJwt = getAccessJwt(c.req);
+  const accessResult = await verifyAccessJwt(
+    accessJwt,
+    c.env.CF_ACCESS_TEAM_DOMAIN,
+    c.env.CF_ACCESS_AUD
+  );
+
+  return c.json({
+    authenticated: accessResult.valid,
+    email: accessResult.email || null,
+    method: accessResult.valid ? 'cloudflare_access' : null,
+  });
+});
+
+// Logout - clears Access cookie and redirects to login
+api.get('/auth/logout', async (_c) => {
+  return new Response(null, {
+    status: 302,
+    headers: {
+      'Location': '/api/auth/login',
+      'Set-Cookie': 'CF_Authorization=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; HttpOnly; Secure; SameSite=Lax',
+    },
+  });
+});
+
+// Login - redirects to a protected route to trigger Cloudflare Access login
+api.get('/auth/login', async (c) => {
+  // Redirect to a protected admin route - Access will intercept and show login
+  // After login, the user will land on /api/admin/auth/redirect which sends them home
+  return c.redirect('/api/admin/auth/redirect');
+});
+
 // ==================== Topics (derived from BigQuery) ====================
 
 // List all topics (from BigQuery - topics that have responses)
@@ -1195,6 +1319,11 @@ admin.use('*', requireAccess);
 admin.get('/auth/check', (c) => {
   const email = c.get('userEmail');
   return c.json({ authenticated: true, email });
+});
+
+// Auth redirect - after Access login, redirect to homepage
+admin.get('/auth/redirect', (c) => {
+  return c.redirect('/');
 });
 
 // Get rate limit status
