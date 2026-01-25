@@ -71,3 +71,29 @@ BQ_TABLE_ID = "raw_responses"
 # CF_ACCESS_TEAM_DOMAIN (e.g., https://your-team.cloudflareaccess.com)
 # CF_ACCESS_AUD (your application's AUD tag from Access dashboard)
 # ADMIN_API_KEY (for Bearer token auth on observation creation)
+
+# ============================================
+# Preview Environment (for PR deployments)
+# ============================================
+[env.preview]
+name = "llm-observatory-preview"
+workers_dev = true
+
+# Preview uses same D1 database as production (read-only recommended)
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "llm-observatory-db"
+database_id = "43f364e4-fd30-4ddf-b068-de171232eddf"
+
+# Preview DO - references production DO via script_name
+[[env.preview.durable_objects.bindings]]
+name = "SWARM_SCHEDULER"
+class_name = "SwarmSchedulerDO"
+script_name = "llm-observatory"
+
+[env.preview.vars]
+BQ_PROJECT_ID = "emilys-personal-projects"
+BQ_DATASET_ID = "llm_observatory"
+BQ_TABLE_ID = "raw_responses"
+
+# No cron triggers for preview - we don't want previews running scheduled tasks
