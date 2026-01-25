@@ -3,6 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import type { Model, Tag } from '../types';
 import ModelSelector from './ModelSelector';
 import { renderMarkdown } from '../utils/markdown';
+import { useAuth } from '../contexts/AuthContext';
+import { LoginRequired } from './LoginRequired';
 
 type ModelStatus = 'idle' | 'pending' | 'loading' | 'success' | 'error';
 
@@ -38,6 +40,7 @@ interface SwarmDetail {
 }
 
 export default function SwarmForm({ editId }: SwarmFormProps) {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [searchParams] = useSearchParams();
   const [models, setModels] = useState<Model[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -418,6 +421,15 @@ export default function SwarmForm({ editId }: SwarmFormProps) {
 
     setIsSubmitting(false);
   };
+
+  // Auth check - show login required if not authenticated
+  if (authLoading) {
+    return <div className="text-center py-12 text-ink/50">Loading...</div>;
+  }
+
+  if (!isAuthenticated) {
+    return <LoginRequired />;
+  }
 
   if (loading || loadingSwarm) {
     return <div className="text-ink-muted">Loading...</div>;

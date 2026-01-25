@@ -1191,6 +1191,12 @@ api.put('/collections/:id/restore', async (c) => {
 const admin = new Hono<{ Bindings: Env; Variables: Variables }>();
 admin.use('*', requireAccess);
 
+// Simple auth check - returns user info if authenticated
+admin.get('/auth/check', (c) => {
+  const email = c.get('userEmail');
+  return c.json({ authenticated: true, email });
+});
+
 // Get rate limit status
 admin.get('/rate-limits', async (c) => {
   const status = await getRateLimitStatus(c.env.DB);

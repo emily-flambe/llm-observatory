@@ -10,10 +10,12 @@ import {
   Link,
 } from 'react-router-dom';
 import SwarmForm from './components/SwarmForm';
+import { LoginRequired } from './components/LoginRequired';
 import Landing from './pages/Landing';
 import ExploreModels from './pages/ExploreModels';
 import { parseBigQueryTimestamp } from './utils/date';
 import { renderMarkdown } from './utils/markdown';
+import { useAuth } from './contexts/AuthContext';
 import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection, CollectionDetail } from './types';
 
 function ObserveNewPage() {
@@ -327,6 +329,7 @@ function ManageSwarmCard({ swarm, onUpdate }: { swarm: Collection; onUpdate?: ()
 }
 
 function ObserveManagePage() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [swarms, setSwarms] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -338,6 +341,9 @@ function ObserveManagePage() {
   }, []);
 
   useEffect(() => {
+    // Skip fetch if not authenticated
+    if (!isAuthenticated) return;
+
     fetch(`/api/swarms?includeDisabled=${showDisabled}`)
       .then(async (res) => {
         const data = (await res.json()) as { error?: string; swarms?: Collection[] };
@@ -353,7 +359,16 @@ function ObserveManagePage() {
         setSwarms([]);
       })
       .finally(() => setLoading(false));
-  }, [showDisabled, refreshCounter]);
+  }, [showDisabled, refreshCounter, isAuthenticated]);
+
+  // Auth check - show login required if not authenticated
+  if (authLoading) {
+    return <div className="text-center py-12 text-ink/50">Loading...</div>;
+  }
+
+  if (!isAuthenticated) {
+    return <LoginRequired />;
+  }
 
   return (
     <div>
@@ -1266,6 +1281,8 @@ function SwarmDetailPage() {
 }
 
 function Layout({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useAuth();
+
   return (
     <div className="min-h-screen">
       <header className="border-b border-border bg-white/80 backdrop-blur-sm sticky top-0 z-10">
@@ -1281,41 +1298,45 @@ function Layout({ children }: { children: React.ReactNode }) {
               </p>
             </Link>
             <nav className="flex border border-border rounded-lg overflow-hidden">
-              <NavLink
-                to="/swarm"
-                end
-                className={({ isActive }) =>
-                  `px-4 py-2 text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'bg-amber text-white'
-                      : 'bg-white text-ink-light hover:bg-paper-dark'
-                  }`
-                }
-              >
-                Create
-              </NavLink>
-              <NavLink
-                to="/swarm/manage"
-                className={({ isActive }) => {
-                  // Also highlight for observation detail and edit pages
-                  const pathname = window.location.pathname;
-                  const isManageRoute = pathname === '/swarm/manage' ||
-                    (pathname.startsWith('/swarm/') && pathname !== '/swarm');
-                  return `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
-                    isActive || isManageRoute
-                      ? 'bg-amber text-white'
-                      : 'bg-white text-ink-light hover:bg-paper-dark'
-                  }`;
-                }}
-              >
-                Manage
-              </NavLink>
+              {isAuthenticated && (
+                <>
+                  <NavLink
+                    to="/swarm"
+                    end
+                    className={({ isActive }) =>
+                      `px-4 py-2 text-sm font-medium transition-colors ${
+                        isActive
+                          ? 'bg-amber text-white'
+                          : 'bg-white text-ink-light hover:bg-paper-dark'
+                      }`
+                    }
+                  >
+                    Create
+                  </NavLink>
+                  <NavLink
+                    to="/swarm/manage"
+                    className={({ isActive }) => {
+                      // Also highlight for observation detail and edit pages
+                      const pathname = window.location.pathname;
+                      const isManageRoute = pathname === '/swarm/manage' ||
+                        (pathname.startsWith('/swarm/') && pathname !== '/swarm');
+                      return `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
+                        isActive || isManageRoute
+                          ? 'bg-amber text-white'
+                          : 'bg-white text-ink-light hover:bg-paper-dark'
+                      }`;
+                    }}
+                  >
+                    Manage
+                  </NavLink>
+                </>
+              )}
               <NavLink
                 to="/history"
                 className={({ isActive }) => {
                   // Also highlight if we're on any /history/* route
                   const isHistoryRoute = window.location.pathname.startsWith('/history');
-                  return `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
+                  return `px-4 py-2 text-sm font-medium transition-colors ${isAuthenticated ? 'border-l border-border' : ''} ${
                     isActive || isHistoryRoute
                       ? 'bg-amber text-white'
                       : 'bg-white text-ink-light hover:bg-paper-dark'
