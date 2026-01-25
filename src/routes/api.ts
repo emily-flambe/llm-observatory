@@ -673,11 +673,10 @@ async function runSingleModel(
     : { modelId, success: true, latencyMs, response: responseContent ?? undefined };
 }
 
-// ==================== Protected Swarm Routes (Cloudflare Access) ====================
+// ==================== Protected Swarm Routes (mounted under /api/admin/swarms) ====================
 
-// Protected swarm routes - require Cloudflare Access authentication
+// Protected swarm routes - mounted under admin router which already has requireAccess
 const protectedSwarms = new Hono<{ Bindings: Env; Variables: Variables }>();
-protectedSwarms.use('*', requireAccess);
 
 // Create new swarm and stream results as each model completes
 protectedSwarms.post('/stream', async (c) => {
@@ -956,8 +955,7 @@ api.get('/swarms/:id/responses', async (c) => {
   return c.json({ prompts: allPrompts });
 });
 
-// Mount protected swarm routes (POST /swarms, POST /swarms/stream, PUT /swarms/:id)
-api.route('/swarms', protectedSwarms);
+// Note: Protected swarm routes are now mounted under /api/admin/swarms (see admin router below)
 
 // ==================== Prompt Templates ====================
 
@@ -1705,6 +1703,9 @@ admin.post('/prompt', async (c) => {
 
   return c.json({ results });
 });
+
+// Mount protected swarm routes under admin (POST /admin/swarms, POST /admin/swarms/stream, PUT /admin/swarms/:id)
+admin.route('/swarms', protectedSwarms);
 
 api.route('/admin', admin);
 

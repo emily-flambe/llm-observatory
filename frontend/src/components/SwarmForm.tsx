@@ -294,7 +294,7 @@ export default function SwarmForm({ editId }: SwarmFormProps) {
     try {
       if (isEditing && editId) {
         // Update existing swarm - no results display needed
-        const res = await fetch(`/api/swarms/${editId}`, {
+        const res = await fetch(`/api/admin/swarms/${editId}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -336,7 +336,7 @@ export default function SwarmForm({ editId }: SwarmFormProps) {
         setResults(initialResults);
 
         // Use streaming endpoint for progressive results
-        const res = await fetch('/api/swarms/stream', {
+        const res = await fetch('/api/admin/swarms/stream', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

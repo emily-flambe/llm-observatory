@@ -53,11 +53,11 @@ const mockRequireAccess = async (c: Context<{ Bindings: Env }>, next: Next) => {
 function createTestApp() {
   const app = new Hono<{ Bindings: Env }>();
 
-  // Apply Cloudflare Access middleware
-  app.use('/api/swarms', mockRequireAccess);
+  // Apply Cloudflare Access middleware (admin routes are protected)
+  app.use('/api/admin/*', mockRequireAccess);
 
-  // Matches the actual implementation in src/routes/api.ts
-  app.post('/api/swarms', async (c) => {
+  // Matches the actual implementation in src/routes/api.ts (now under /api/admin/swarms)
+  app.post('/api/admin/swarms', async (c) => {
     const body = await c.req.json<{
       prompt_text: string;
       model_ids: string[];
@@ -87,9 +87,9 @@ describe('Swarms API Routes', () => {
     vi.clearAllMocks();
   });
 
-  describe('POST /api/swarms - Cloudflare Access Authentication', () => {
+  describe('POST /api/admin/swarms - Cloudflare Access Authentication', () => {
     it('returns 401 when cf-access-jwt-assertion header is missing', async () => {
-      const res = await app.request('/api/swarms', {
+      const res = await app.request('/api/admin/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -106,7 +106,7 @@ describe('Swarms API Routes', () => {
     });
 
     it('accepts request with valid cf-access-jwt-assertion header', async () => {
-      const res = await app.request('/api/swarms', {
+      const res = await app.request('/api/admin/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -125,9 +125,9 @@ describe('Swarms API Routes', () => {
     });
   });
 
-  describe('POST /api/swarms - Input Validation', () => {
+  describe('POST /api/admin/swarms - Input Validation', () => {
     it('validates required fields after successful auth', async () => {
-      const res = await app.request('/api/swarms', {
+      const res = await app.request('/api/admin/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -142,7 +142,7 @@ describe('Swarms API Routes', () => {
     });
 
     it('validates model_ids is non-empty', async () => {
-      const res = await app.request('/api/swarms', {
+      const res = await app.request('/api/admin/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -160,7 +160,7 @@ describe('Swarms API Routes', () => {
     });
 
     it('validates prompt_text is present', async () => {
-      const res = await app.request('/api/swarms', {
+      const res = await app.request('/api/admin/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

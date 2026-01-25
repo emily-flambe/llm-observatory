@@ -168,7 +168,7 @@ function ManageSwarmCard({ swarm, onUpdate }: { swarm: Collection; onUpdate?: ()
     setError(null);
 
     try {
-      const res = await fetch(`/api/swarms/${swarm.id}`, {
+      const res = await fetch(`/api/admin/swarms/${swarm.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -950,7 +950,7 @@ function SwarmDetailPage() {
     setActionSuccess(null);
 
     try {
-      const res = await fetch(`/api/swarms/${id}`, {
+      const res = await fetch(`/api/admin/swarms/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
