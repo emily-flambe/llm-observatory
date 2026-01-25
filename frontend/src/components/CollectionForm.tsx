@@ -54,7 +54,6 @@ export default function CollectionForm({ onCollectionComplete, editId }: Collect
   const [loadingCollection, setLoadingCollection] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
-  const [apiKey, setApiKey] = useState('');
   const [selectedTopicId, setSelectedTopicId] = useState<string>('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
@@ -240,7 +239,7 @@ export default function CollectionForm({ onCollectionComplete, editId }: Collect
   };
 
   const handleSubmit = async () => {
-    if (!apiKey || !selectedTopicId || !selectedTemplateId || selectedModelIds.size === 0) return;
+    if (!selectedTopicId || !selectedTemplateId || selectedModelIds.size === 0) return;
     setSubmitting(true);
     setError(null);
     setResults(null);
@@ -272,7 +271,6 @@ export default function CollectionForm({ onCollectionComplete, editId }: Collect
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
             model_ids: modelIds,
@@ -294,7 +292,6 @@ export default function CollectionForm({ onCollectionComplete, editId }: Collect
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
             topic_id: selectedTopicId,
@@ -329,7 +326,6 @@ export default function CollectionForm({ onCollectionComplete, editId }: Collect
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
           },
         });
 
@@ -416,18 +412,6 @@ export default function CollectionForm({ onCollectionComplete, editId }: Collect
             {error}
           </div>
         )}
-
-        {/* API Key */}
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-ink">API Key</label>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={e => setApiKey(e.target.value)}
-            placeholder="Enter admin API key"
-            className="w-full rounded-lg px-3 py-2.5 border border-border focus:border-amber focus:ring-1 focus:ring-amber"
-          />
-        </div>
 
         {/* Topic */}
         <div className="space-y-2">
@@ -673,7 +657,7 @@ export default function CollectionForm({ onCollectionComplete, editId }: Collect
       <div className="px-6 py-4 bg-paper-dark border-t border-border">
         <button
           onClick={handleSubmit}
-          disabled={submitting || !apiKey || !selectedTopicId || !selectedTemplateId || selectedModelIds.size === 0}
+          disabled={submitting || !selectedTopicId || !selectedTemplateId || selectedModelIds.size === 0}
           className="w-full btn-primary py-3 rounded-lg font-medium disabled:opacity-50"
         >
           {submitting

@@ -673,24 +673,14 @@ async function runSingleModel(
     : { modelId, success: true, latencyMs, response: responseContent ?? undefined };
 }
 
-// Create new swarm and stream results as each model completes (requires API key)
-api.post('/swarms/stream', async (c) => {
-  // Validate Bearer token
-  const authHeader = c.req.header('Authorization');
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+// ==================== Protected Swarm Routes (Cloudflare Access) ====================
 
-  if (!c.env.ADMIN_API_KEY) {
-    return c.json({ error: 'Server configuration error: ADMIN_API_KEY not set' }, 500);
-  }
+// Protected swarm routes - require Cloudflare Access authentication
+const protectedSwarms = new Hono<{ Bindings: Env; Variables: Variables }>();
+protectedSwarms.use('*', requireAccess);
 
-  if (!token) {
-    return c.json({ error: 'Missing API key - provide Authorization: Bearer <key> header' }, 401);
-  }
-
-  if (token !== c.env.ADMIN_API_KEY.trim()) {
-    return c.json({ error: 'Invalid API key' }, 401);
-  }
-
+// Create new swarm and stream results as each model completes
+protectedSwarms.post('/stream', async (c) => {
   const body = await c.req.json<{
     prompt_text: string;
     display_name?: string;
@@ -797,26 +787,8 @@ api.post('/swarms/stream', async (c) => {
   });
 });
 
-// Create new swarm and run immediately (requires API key) - non-streaming version
-api.post('/swarms', async (c) => {
-  // Validate Bearer token
-  const authHeader = c.req.header('Authorization');
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
-
-  // Check if ADMIN_API_KEY is configured
-  if (!c.env.ADMIN_API_KEY) {
-    console.error('ADMIN_API_KEY secret is not configured');
-    return c.json({ error: 'Server configuration error: ADMIN_API_KEY not set' }, 500);
-  }
-
-  if (!token) {
-    return c.json({ error: 'Missing API key - provide Authorization: Bearer <key> header' }, 401);
-  }
-
-  if (token !== c.env.ADMIN_API_KEY.trim()) {
-    return c.json({ error: 'Invalid API key' }, 401);
-  }
-
+// Create new swarm and run immediately - non-streaming version
+protectedSwarms.post('/', async (c) => {
   const body = await c.req.json<{
     prompt_text: string;
     display_name?: string;
@@ -873,25 +845,8 @@ api.post('/swarms', async (c) => {
   }
 });
 
-// Update swarm (creates new version if models/schedule change) - requires API key
-api.put('/swarms/:id', async (c) => {
-  // Validate Bearer token
-  const authHeader = c.req.header('Authorization');
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
-
-  if (!c.env.ADMIN_API_KEY) {
-    console.error('ADMIN_API_KEY secret is not configured');
-    return c.json({ error: 'Server configuration error: ADMIN_API_KEY not set' }, 500);
-  }
-
-  if (!token) {
-    return c.json({ error: 'Missing API key - provide Authorization: Bearer <key> header' }, 401);
-  }
-
-  if (token !== c.env.ADMIN_API_KEY.trim()) {
-    return c.json({ error: 'Invalid API key' }, 401);
-  }
-
+// Update swarm (creates new version if models/schedule change)
+protectedSwarms.put('/:id', async (c) => {
   const { id } = c.req.param();
   const body = await c.req.json<{
     display_name?: string;
@@ -1000,6 +955,9 @@ api.get('/swarms/:id/responses', async (c) => {
 
   return c.json({ prompts: allPrompts });
 });
+
+// Mount protected swarm routes (POST /swarms, POST /swarms/stream, PUT /swarms/:id)
+api.route('/swarms', protectedSwarms);
 
 // ==================== Prompt Templates ====================
 

@@ -138,7 +138,6 @@ function ManageSwarmCard({ swarm, onUpdate }: { swarm: Collection; onUpdate?: ()
   const [cronExpression, setCronExpression] = useState(swarm.cron_expression || '');
   const [timezone, setTimezone] = useState(getStoredTimezone);
   const [saving, setSaving] = useState(false);
-  const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const lastRunDate = swarm.last_run_at ? parseBigQueryTimestamp(swarm.last_run_at) : null;
@@ -165,11 +164,6 @@ function ManageSwarmCard({ swarm, onUpdate }: { swarm: Collection; onUpdate?: ()
   const nextRun = calculateNextRun(swarm.schedule_type, swarm.cron_expression, swarm.last_run_at, timezone);
 
   const handleSaveSchedule = async () => {
-    if (!apiKey.trim()) {
-      setError('API key is required');
-      return;
-    }
-
     setSaving(true);
     setError(null);
 
@@ -178,7 +172,6 @@ function ManageSwarmCard({ swarm, onUpdate }: { swarm: Collection; onUpdate?: ()
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
           schedule_type: scheduleType || null,
@@ -300,17 +293,6 @@ function ManageSwarmCard({ swarm, onUpdate }: { swarm: Collection; onUpdate?: ()
                   ))}
                 </select>
               </div>
-            </div>
-
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs text-ink-muted mb-1">API Key</label>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Required to save changes"
-                className="w-full px-2 py-1.5 text-sm border border-border rounded"
-              />
             </div>
 
             {error && (
@@ -855,7 +837,6 @@ function SwarmDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedExecutions, setExpandedExecutions] = useState<Set<string>>(new Set());
-  const [apiKey, setApiKey] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -932,8 +913,8 @@ function SwarmDetailPage() {
   };
 
   const handleRunNow = async () => {
-    if (!apiKey || !id) {
-      setActionError('Please enter an API key to release swarm');
+    if (!id) {
+      setActionError('Swarm ID is required');
       return;
     }
     setActionError(null);
@@ -945,7 +926,6 @@ function SwarmDetailPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
         },
       });
       if (!res.ok) {
@@ -962,8 +942,8 @@ function SwarmDetailPage() {
   };
 
   const handleTogglePause = async () => {
-    if (!apiKey || !id || !swarm) {
-      setActionError('Please enter an API key to modify swarm');
+    if (!id || !swarm) {
+      setActionError('Swarm not found');
       return;
     }
     setActionError(null);
@@ -974,7 +954,6 @@ function SwarmDetailPage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({ is_paused: !swarm.is_paused }),
       });
@@ -989,8 +968,8 @@ function SwarmDetailPage() {
   };
 
   const handleDisable = async () => {
-    if (!apiKey || !id) {
-      setActionError('Please enter an API key to disable swarm');
+    if (!id) {
+      setActionError('Swarm ID is required');
       return;
     }
     setActionError(null);
@@ -999,7 +978,6 @@ function SwarmDetailPage() {
     try {
       const res = await fetch(`/api/swarms/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${apiKey}` },
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
@@ -1013,8 +991,8 @@ function SwarmDetailPage() {
   };
 
   const handleRestore = async () => {
-    if (!apiKey || !id) {
-      setActionError('Please enter an API key to restore swarm');
+    if (!id) {
+      setActionError('Swarm ID is required');
       return;
     }
     setActionError(null);
@@ -1023,7 +1001,6 @@ function SwarmDetailPage() {
     try {
       const res = await fetch(`/api/swarms/${id}/restore`, {
         method: 'PUT',
-        headers: { Authorization: `Bearer ${apiKey}` },
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
@@ -1107,13 +1084,6 @@ function SwarmDetailPage() {
 
       <div className="bg-paper-dark rounded-lg p-4 mb-6 border border-border">
         <div className="flex flex-wrap items-center gap-3 mb-4">
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="API key for actions"
-            className="flex-1 min-w-[200px] max-w-xs rounded-lg px-3 py-2 text-sm border border-border focus:border-amber focus:ring-1 focus:ring-amber"
-          />
           {isDisabled ? (
             <button
               onClick={handleRestore}
