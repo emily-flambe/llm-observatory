@@ -301,20 +301,11 @@ api.get('/auth/logout', async (_c) => {
   });
 });
 
-// Login - redirects to Cloudflare Access login page
+// Login - redirects to a protected route to trigger Cloudflare Access login
 api.get('/auth/login', async (c) => {
-  const teamDomain = c.env.CF_ACCESS_TEAM_DOMAIN;
-  const aud = c.env.CF_ACCESS_AUD;
-
-  if (!teamDomain || !aud) {
-    return c.json({ error: 'Access not configured' }, 500);
-  }
-
-  const url = new URL(c.req.url);
-  const redirectUrl = `${url.protocol}//${url.host}/`;
-  const accessLoginUrl = `${teamDomain}/cdn-cgi/access/login?kid=${aud}&redirect_url=${encodeURIComponent(redirectUrl)}`;
-
-  return c.redirect(accessLoginUrl);
+  // Redirect to a protected admin route - Access will intercept and show login
+  // After login, the user will land on /api/admin/auth/redirect which sends them home
+  return c.redirect('/api/admin/auth/redirect');
 });
 
 // ==================== Topics (derived from BigQuery) ====================
@@ -1328,6 +1319,11 @@ admin.use('*', requireAccess);
 admin.get('/auth/check', (c) => {
   const email = c.get('userEmail');
   return c.json({ authenticated: true, email });
+});
+
+// Auth redirect - after Access login, redirect to homepage
+admin.get('/auth/redirect', (c) => {
+  return c.redirect('/');
 });
 
 // Get rate limit status
