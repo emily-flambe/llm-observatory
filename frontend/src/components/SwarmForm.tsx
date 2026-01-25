@@ -3,6 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import type { Model, Tag } from '../types';
 import ModelSelector from './ModelSelector';
 import { renderMarkdown } from '../utils/markdown';
+import { useAuth } from '../contexts/AuthContext';
+import { LoginRequired } from './LoginRequired';
 
 type ModelStatus = 'idle' | 'pending' | 'loading' | 'success' | 'error';
 
@@ -38,6 +40,7 @@ interface SwarmDetail {
 }
 
 export default function SwarmForm({ editId }: SwarmFormProps) {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [searchParams] = useSearchParams();
   const [models, setModels] = useState<Model[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -68,8 +71,6 @@ export default function SwarmForm({ editId }: SwarmFormProps) {
   const [createdSwarmId, setCreatedSwarmId] = useState<string | null>(null);
   const [editSuccess, setEditSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState('');
-  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
 
   // New tag creation
   const [showNewTagInput, setShowNewTagInput] = useState(false);
@@ -282,7 +283,6 @@ export default function SwarmForm({ editId }: SwarmFormProps) {
 
     setIsSubmitting(true);
     setError(null);
-    setApiKeyError(null);
     setEditSuccess(false);
 
     // Convert schedule type to cron expression
@@ -297,11 +297,10 @@ export default function SwarmForm({ editId }: SwarmFormProps) {
     try {
       if (isEditing && editId) {
         // Update existing swarm - no results display needed
-        const res = await fetch(`/api/swarms/${editId}`, {
+        const res = await fetch(`/api/admin/swarms/${editId}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
             display_name: displayName || null,
@@ -312,18 +311,6 @@ export default function SwarmForm({ editId }: SwarmFormProps) {
             hide_from_history: hideFromHistory,
           }),
         });
-
-        // Handle auth errors specifically
-        if (res.status === 401 || res.status === 500) {
-          const data = (await res.json()) as { error?: string };
-          const errorMsg = data.error || (res.status === 401 ? 'Invalid API key' : 'Server error');
-          if (res.status === 401 || errorMsg.toLowerCase().includes('api key')) {
-            setApiKeyError(errorMsg);
-            setIsSubmitting(false);
-            return;
-          }
-          throw new Error(errorMsg);
-        }
 
         if (!res.ok) {
           const data = (await res.json()) as { error?: string };
@@ -352,11 +339,10 @@ export default function SwarmForm({ editId }: SwarmFormProps) {
         setResults(initialResults);
 
         // Use streaming endpoint for progressive results
-        const res = await fetch('/api/swarms/stream', {
+        const res = await fetch('/api/admin/swarms/stream', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
             prompt_text: prompt.trim(),
@@ -368,19 +354,6 @@ export default function SwarmForm({ editId }: SwarmFormProps) {
             cron_expression: finalCron,
           }),
         });
-
-        // Handle auth errors specifically - show near API key field, don't show results
-        if (res.status === 401 || res.status === 500) {
-          const data = (await res.json()) as { error?: string };
-          const errorMsg = data.error || (res.status === 401 ? 'Invalid API key' : 'Server error');
-          if (res.status === 401 || errorMsg.toLowerCase().includes('api key')) {
-            setApiKeyError(errorMsg);
-            setResults(new Map()); // Clear results on auth failure
-            setIsSubmitting(false);
-            return;
-          }
-          throw new Error(errorMsg);
-        }
 
         if (!res.ok) {
           const data = (await res.json()) as { error?: string };
@@ -448,6 +421,15 @@ export default function SwarmForm({ editId }: SwarmFormProps) {
 
     setIsSubmitting(false);
   };
+
+  // Auth check - show login required if not authenticated
+  if (authLoading) {
+    return <div className="text-center py-12 text-ink/50">Loading...</div>;
+  }
+
+  if (!isAuthenticated) {
+    return <LoginRequired />;
+  }
 
   if (loading || loadingSwarm) {
     return <div className="text-ink-muted">Loading...</div>;
@@ -729,37 +711,11 @@ export default function SwarmForm({ editId }: SwarmFormProps) {
           )}
         </div>
 
-        {/* Footer with API key and submit button */}
-        <div className="px-6 py-4 bg-paper-dark border-t border-border space-y-3">
-          {/* API key input - required for all swarm operations */}
-          <div className="space-y-1">
-            <div className="flex items-center gap-3">
-              <label htmlFor="apiKey" className="text-sm font-medium text-ink whitespace-nowrap">
-                API Key
-              </label>
-              <input
-                type="password"
-                id="apiKey"
-                value={apiKey}
-                onChange={(e) => {
-                  setApiKey(e.target.value);
-                  setApiKeyError(null); // Clear error when user types
-                }}
-                placeholder={isEditing ? 'Required to save changes' : 'Required to release swarm'}
-                className={`flex-1 px-3 py-2 rounded-lg text-sm border focus:ring-1 ${
-                  apiKeyError
-                    ? 'border-error focus:border-error focus:ring-error'
-                    : 'border-border focus:border-amber focus:ring-amber'
-                }`}
-              />
-            </div>
-            {apiKeyError && (
-              <p className="text-sm text-error ml-[4.5rem]">{apiKeyError}</p>
-            )}
-          </div>
+        {/* Footer with submit button */}
+        <div className="px-6 py-4 bg-paper-dark border-t border-border">
           <button
             onClick={handleSubmit}
-            disabled={isSubmitting || !prompt.trim() || selectedModels.size === 0 || (!isEditing && !wordLimitValid) || !apiKey}
+            disabled={isSubmitting || !prompt.trim() || selectedModels.size === 0 || (!isEditing && !wordLimitValid)}
             className="w-full btn-primary py-3 rounded-lg font-medium disabled:opacity-50"
           >
             {isSubmitting

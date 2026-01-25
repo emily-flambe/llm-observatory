@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Hono } from 'hono';
+import { Hono, Context, Next } from 'hono';
 import type { Env } from '../../src/types/env';
 
 // Mock the services
@@ -38,30 +38,26 @@ vi.mock('../../src/services/bigquery', () => ({
   extractProductFamily: vi.fn().mockReturnValue('TestProduct'),
 }));
 
+// Simple mock of requireAccess middleware for testing
+// In real implementation, this validates JWT against Cloudflare's JWKS endpoint
+const mockRequireAccess = async (c: Context<{ Bindings: Env }>, next: Next) => {
+  const token = c.req.header('cf-access-jwt-assertion');
+  if (!token) {
+    return c.json({ error: 'Missing Access token' }, 401);
+  }
+  // In tests, just accept any non-empty token
+  return next();
+};
+
 // Create a test app that mirrors the actual swarm creation route
 function createTestApp() {
   const app = new Hono<{ Bindings: Env }>();
 
-  // Matches the actual implementation in src/routes/api.ts
-  app.post('/api/swarms', async (c) => {
-    // Validate Bearer token
-    const authHeader = c.req.header('Authorization');
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+  // Apply Cloudflare Access middleware (admin routes are protected)
+  app.use('/api/admin/*', mockRequireAccess);
 
-    // Check if ADMIN_API_KEY is configured
-    if (!c.env.ADMIN_API_KEY) {
-      console.error('ADMIN_API_KEY secret is not configured');
-      return c.json({ error: 'Server configuration error: ADMIN_API_KEY not set' }, 500);
-    }
-
-    if (!token) {
-      return c.json({ error: 'Missing API key - provide Authorization: Bearer <key> header' }, 401);
-    }
-
-    if (token !== c.env.ADMIN_API_KEY.trim()) {
-      return c.json({ error: 'Invalid API key' }, 401);
-    }
-
+  // Matches the actual implementation in src/routes/api.ts (now under /api/admin/swarms)
+  app.post('/api/admin/swarms', async (c) => {
     const body = await c.req.json<{
       prompt_text: string;
       model_ids: string[];
@@ -81,17 +77,8 @@ function createTestApp() {
 describe('Swarms API Routes', () => {
   let app: ReturnType<typeof createTestApp>;
   const mockEnv = {
-    ADMIN_API_KEY: 'test-api-key-12345',
-    DB: {} as D1Database,
-  } as unknown as Env;
-
-  const mockEnvNoApiKey = {
-    ADMIN_API_KEY: '', // Empty/falsy
-    DB: {} as D1Database,
-  } as unknown as Env;
-
-  const mockEnvUndefinedApiKey = {
-    // ADMIN_API_KEY not set at all
+    CF_ACCESS_TEAM_DOMAIN: 'https://example.cloudflareaccess.com',
+    CF_ACCESS_AUD: 'test-audience-id',
     DB: {} as D1Database,
   } as unknown as Env;
 
@@ -100,45 +87,9 @@ describe('Swarms API Routes', () => {
     vi.clearAllMocks();
   });
 
-  describe('POST /api/swarms - Authentication', () => {
-    it('returns 500 when ADMIN_API_KEY is not configured', async () => {
-      const res = await app.request('/api/swarms', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer some-key',
-        },
-        body: JSON.stringify({
-          prompt_text: 'Test prompt',
-          model_ids: ['model-1'],
-        }),
-      }, mockEnvUndefinedApiKey);
-
-      expect(res.status).toBe(500);
-      const body = await res.json();
-      expect(body.error).toBe('Server configuration error: ADMIN_API_KEY not set');
-    });
-
-    it('returns 500 when ADMIN_API_KEY is empty string', async () => {
-      const res = await app.request('/api/swarms', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer some-key',
-        },
-        body: JSON.stringify({
-          prompt_text: 'Test prompt',
-          model_ids: ['model-1'],
-        }),
-      }, mockEnvNoApiKey);
-
-      expect(res.status).toBe(500);
-      const body = await res.json();
-      expect(body.error).toBe('Server configuration error: ADMIN_API_KEY not set');
-    });
-
-    it('returns 401 with helpful message when Authorization header is missing', async () => {
-      const res = await app.request('/api/swarms', {
+  describe('POST /api/admin/swarms - Cloudflare Access Authentication', () => {
+    it('returns 401 when cf-access-jwt-assertion header is missing', async () => {
+      const res = await app.request('/api/admin/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -151,51 +102,15 @@ describe('Swarms API Routes', () => {
 
       expect(res.status).toBe(401);
       const body = await res.json();
-      expect(body.error).toBe('Missing API key - provide Authorization: Bearer <key> header');
+      expect(body.error).toBe('Missing Access token');
     });
 
-    it('returns 401 when API key is invalid', async () => {
-      const res = await app.request('/api/swarms', {
+    it('accepts request with valid cf-access-jwt-assertion header', async () => {
+      const res = await app.request('/api/admin/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: 'Bearer wrong-api-key',
-        },
-        body: JSON.stringify({
-          prompt_text: 'Test prompt',
-          model_ids: ['model-1'],
-        }),
-      }, mockEnv);
-
-      expect(res.status).toBe(401);
-      const body = await res.json();
-      expect(body.error).toBe('Invalid API key');
-    });
-
-    it('returns 401 when using Basic auth instead of Bearer', async () => {
-      const res = await app.request('/api/swarms', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Basic dXNlcjpwYXNz',
-        },
-        body: JSON.stringify({
-          prompt_text: 'Test prompt',
-          model_ids: ['model-1'],
-        }),
-      }, mockEnv);
-
-      expect(res.status).toBe(401);
-      const body = await res.json();
-      expect(body.error).toBe('Missing API key - provide Authorization: Bearer <key> header');
-    });
-
-    it('accepts valid API key and creates swarm', async () => {
-      const res = await app.request('/api/swarms', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer test-api-key-12345',
+          'cf-access-jwt-assertion': 'mock-jwt-token-for-testing',
         },
         body: JSON.stringify({
           prompt_text: 'Test prompt',
@@ -208,49 +123,15 @@ describe('Swarms API Routes', () => {
       expect(body.created).toBe(true);
       expect(body.swarm.prompt_text).toBe('Test prompt');
     });
-
-    it('trims whitespace from API key before comparison', async () => {
-      const res = await app.request('/api/swarms', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer test-api-key-12345  ', // trailing whitespace
-        },
-        body: JSON.stringify({
-          prompt_text: 'Test prompt',
-          model_ids: ['model-1'],
-        }),
-      }, mockEnv);
-
-      expect(res.status).toBe(201);
-      const body = await res.json();
-      expect(body.created).toBe(true);
-    });
-
-    it('handles API key with leading whitespace', async () => {
-      const res = await app.request('/api/swarms', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer   test-api-key-12345', // leading whitespace after Bearer
-        },
-        body: JSON.stringify({
-          prompt_text: 'Test prompt',
-          model_ids: ['model-1'],
-        }),
-      }, mockEnv);
-
-      expect(res.status).toBe(201);
-    });
   });
 
-  describe('POST /api/swarms - Input Validation', () => {
+  describe('POST /api/admin/swarms - Input Validation', () => {
     it('validates required fields after successful auth', async () => {
-      const res = await app.request('/api/swarms', {
+      const res = await app.request('/api/admin/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: 'Bearer test-api-key-12345',
+          'cf-access-jwt-assertion': 'mock-jwt-token-for-testing',
         },
         body: JSON.stringify({}),
       }, mockEnv);
@@ -261,11 +142,11 @@ describe('Swarms API Routes', () => {
     });
 
     it('validates model_ids is non-empty', async () => {
-      const res = await app.request('/api/swarms', {
+      const res = await app.request('/api/admin/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: 'Bearer test-api-key-12345',
+          'cf-access-jwt-assertion': 'mock-jwt-token-for-testing',
         },
         body: JSON.stringify({
           prompt_text: 'Test prompt',
@@ -279,11 +160,11 @@ describe('Swarms API Routes', () => {
     });
 
     it('validates prompt_text is present', async () => {
-      const res = await app.request('/api/swarms', {
+      const res = await app.request('/api/admin/swarms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: 'Bearer test-api-key-12345',
+          'cf-access-jwt-assertion': 'mock-jwt-token-for-testing',
         },
         body: JSON.stringify({
           model_ids: ['model-1'],

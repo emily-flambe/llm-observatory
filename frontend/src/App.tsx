@@ -10,10 +10,12 @@ import {
   Link,
 } from 'react-router-dom';
 import SwarmForm from './components/SwarmForm';
+import { LoginRequired } from './components/LoginRequired';
 import Landing from './pages/Landing';
 import ExploreModels from './pages/ExploreModels';
 import { parseBigQueryTimestamp } from './utils/date';
 import { renderMarkdown } from './utils/markdown';
+import { useAuth } from './contexts/AuthContext';
 import type { Topic, TopicsResponse, PromptLabQuery, PromptsResponse, Model, ModelsResponse, Collection, CollectionDetail } from './types';
 
 function ObserveNewPage() {
@@ -138,7 +140,6 @@ function ManageSwarmCard({ swarm, onUpdate }: { swarm: Collection; onUpdate?: ()
   const [cronExpression, setCronExpression] = useState(swarm.cron_expression || '');
   const [timezone, setTimezone] = useState(getStoredTimezone);
   const [saving, setSaving] = useState(false);
-  const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const lastRunDate = swarm.last_run_at ? parseBigQueryTimestamp(swarm.last_run_at) : null;
@@ -165,20 +166,14 @@ function ManageSwarmCard({ swarm, onUpdate }: { swarm: Collection; onUpdate?: ()
   const nextRun = calculateNextRun(swarm.schedule_type, swarm.cron_expression, swarm.last_run_at, timezone);
 
   const handleSaveSchedule = async () => {
-    if (!apiKey.trim()) {
-      setError('API key is required');
-      return;
-    }
-
     setSaving(true);
     setError(null);
 
     try {
-      const res = await fetch(`/api/swarms/${swarm.id}`, {
+      const res = await fetch(`/api/admin/swarms/${swarm.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
           schedule_type: scheduleType || null,
@@ -302,17 +297,6 @@ function ManageSwarmCard({ swarm, onUpdate }: { swarm: Collection; onUpdate?: ()
               </div>
             </div>
 
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs text-ink-muted mb-1">API Key</label>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Required to save changes"
-                className="w-full px-2 py-1.5 text-sm border border-border rounded"
-              />
-            </div>
-
             {error && (
               <p className="text-xs text-error">{error}</p>
             )}
@@ -345,6 +329,7 @@ function ManageSwarmCard({ swarm, onUpdate }: { swarm: Collection; onUpdate?: ()
 }
 
 function ObserveManagePage() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [swarms, setSwarms] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -356,6 +341,9 @@ function ObserveManagePage() {
   }, []);
 
   useEffect(() => {
+    // Skip fetch if not authenticated
+    if (!isAuthenticated) return;
+
     fetch(`/api/swarms?includeDisabled=${showDisabled}`)
       .then(async (res) => {
         const data = (await res.json()) as { error?: string; swarms?: Collection[] };
@@ -371,7 +359,16 @@ function ObserveManagePage() {
         setSwarms([]);
       })
       .finally(() => setLoading(false));
-  }, [showDisabled, refreshCounter]);
+  }, [showDisabled, refreshCounter, isAuthenticated]);
+
+  // Auth check - show login required if not authenticated
+  if (authLoading) {
+    return <div className="text-center py-12 text-ink/50">Loading...</div>;
+  }
+
+  if (!isAuthenticated) {
+    return <LoginRequired />;
+  }
 
   return (
     <div>
@@ -855,7 +852,6 @@ function SwarmDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedExecutions, setExpandedExecutions] = useState<Set<string>>(new Set());
-  const [apiKey, setApiKey] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -932,8 +928,8 @@ function SwarmDetailPage() {
   };
 
   const handleRunNow = async () => {
-    if (!apiKey || !id) {
-      setActionError('Please enter an API key to release swarm');
+    if (!id) {
+      setActionError('Swarm ID is required');
       return;
     }
     setActionError(null);
@@ -945,7 +941,6 @@ function SwarmDetailPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
         },
       });
       if (!res.ok) {
@@ -962,19 +957,18 @@ function SwarmDetailPage() {
   };
 
   const handleTogglePause = async () => {
-    if (!apiKey || !id || !swarm) {
-      setActionError('Please enter an API key to modify swarm');
+    if (!id || !swarm) {
+      setActionError('Swarm not found');
       return;
     }
     setActionError(null);
     setActionSuccess(null);
 
     try {
-      const res = await fetch(`/api/swarms/${id}`, {
+      const res = await fetch(`/api/admin/swarms/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({ is_paused: !swarm.is_paused }),
       });
@@ -989,8 +983,8 @@ function SwarmDetailPage() {
   };
 
   const handleDisable = async () => {
-    if (!apiKey || !id) {
-      setActionError('Please enter an API key to disable swarm');
+    if (!id) {
+      setActionError('Swarm ID is required');
       return;
     }
     setActionError(null);
@@ -999,7 +993,6 @@ function SwarmDetailPage() {
     try {
       const res = await fetch(`/api/swarms/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${apiKey}` },
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
@@ -1013,8 +1006,8 @@ function SwarmDetailPage() {
   };
 
   const handleRestore = async () => {
-    if (!apiKey || !id) {
-      setActionError('Please enter an API key to restore swarm');
+    if (!id) {
+      setActionError('Swarm ID is required');
       return;
     }
     setActionError(null);
@@ -1023,7 +1016,6 @@ function SwarmDetailPage() {
     try {
       const res = await fetch(`/api/swarms/${id}/restore`, {
         method: 'PUT',
-        headers: { Authorization: `Bearer ${apiKey}` },
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
@@ -1107,13 +1099,6 @@ function SwarmDetailPage() {
 
       <div className="bg-paper-dark rounded-lg p-4 mb-6 border border-border">
         <div className="flex flex-wrap items-center gap-3 mb-4">
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="API key for actions"
-            className="flex-1 min-w-[200px] max-w-xs rounded-lg px-3 py-2 text-sm border border-border focus:border-amber focus:ring-1 focus:ring-amber"
-          />
           {isDisabled ? (
             <button
               onClick={handleRestore}
@@ -1296,6 +1281,8 @@ function SwarmDetailPage() {
 }
 
 function Layout({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useAuth();
+
   return (
     <div className="min-h-screen">
       <header className="border-b border-border bg-white/80 backdrop-blur-sm sticky top-0 z-10">
@@ -1311,41 +1298,45 @@ function Layout({ children }: { children: React.ReactNode }) {
               </p>
             </Link>
             <nav className="flex border border-border rounded-lg overflow-hidden">
-              <NavLink
-                to="/swarm"
-                end
-                className={({ isActive }) =>
-                  `px-4 py-2 text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'bg-amber text-white'
-                      : 'bg-white text-ink-light hover:bg-paper-dark'
-                  }`
-                }
-              >
-                Create
-              </NavLink>
-              <NavLink
-                to="/swarm/manage"
-                className={({ isActive }) => {
-                  // Also highlight for observation detail and edit pages
-                  const pathname = window.location.pathname;
-                  const isManageRoute = pathname === '/swarm/manage' ||
-                    (pathname.startsWith('/swarm/') && pathname !== '/swarm');
-                  return `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
-                    isActive || isManageRoute
-                      ? 'bg-amber text-white'
-                      : 'bg-white text-ink-light hover:bg-paper-dark'
-                  }`;
-                }}
-              >
-                Manage
-              </NavLink>
+              {isAuthenticated && (
+                <>
+                  <NavLink
+                    to="/swarm"
+                    end
+                    className={({ isActive }) =>
+                      `px-4 py-2 text-sm font-medium transition-colors ${
+                        isActive
+                          ? 'bg-amber text-white'
+                          : 'bg-white text-ink-light hover:bg-paper-dark'
+                      }`
+                    }
+                  >
+                    Create
+                  </NavLink>
+                  <NavLink
+                    to="/swarm/manage"
+                    className={({ isActive }) => {
+                      // Also highlight for observation detail and edit pages
+                      const pathname = window.location.pathname;
+                      const isManageRoute = pathname === '/swarm/manage' ||
+                        (pathname.startsWith('/swarm/') && pathname !== '/swarm');
+                      return `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
+                        isActive || isManageRoute
+                          ? 'bg-amber text-white'
+                          : 'bg-white text-ink-light hover:bg-paper-dark'
+                      }`;
+                    }}
+                  >
+                    Manage
+                  </NavLink>
+                </>
+              )}
               <NavLink
                 to="/history"
                 className={({ isActive }) => {
                   // Also highlight if we're on any /history/* route
                   const isHistoryRoute = window.location.pathname.startsWith('/history');
-                  return `px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
+                  return `px-4 py-2 text-sm font-medium transition-colors ${isAuthenticated ? 'border-l border-border' : ''} ${
                     isActive || isHistoryRoute
                       ? 'bg-amber text-white'
                       : 'bg-white text-ink-light hover:bg-paper-dark'

@@ -8,8 +8,13 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:8787',
+    baseURL: process.env.E2E_BASE_URL || 'http://localhost:8787',
     trace: 'on-first-retry',
+    // Cloudflare Access service token for authenticated e2e tests
+    extraHTTPHeaders: process.env.CF_ACCESS_CLIENT_ID ? {
+      'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID,
+      'CF-Access-Client-Secret': process.env.CF_ACCESS_CLIENT_SECRET || '',
+    } : undefined,
   },
   projects: [
     {
