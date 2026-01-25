@@ -40,7 +40,7 @@ class_name = "SwarmSchedulerDO"
 
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["SwarmSchedulerDO"]
+new_classes = ["SwarmSchedulerDO"]
 
 [dev]
 port = 8787
