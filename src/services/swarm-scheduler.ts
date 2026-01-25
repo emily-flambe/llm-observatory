@@ -3,15 +3,19 @@
  * Runs scheduled swarms based on their cron expressions
  *
  * IDEMPOTENCY: Cloudflare may invoke cron triggers from multiple data centers
- * simultaneously. We deduplicate using a UNIQUE constraint approach:
+ * simultaneously. We deduplicate using a DUAL CLAIM approach:
  *
  * 1. Quick check: Skip if last_run_at already falls within the current minute
- * 2. Claim via INSERT: Insert into scheduled_run_claims table with UNIQUE(swarm_id, scheduled_for)
- *    SQLite's UNIQUE constraint is enforced atomically, ensuring only ONE worker succeeds
+ * 2. INSERT claim: Insert into scheduled_run_claims with UNIQUE(swarm_id, scheduled_for)
+ * 3. CAS claim: UPDATE last_run_at with compare-and-swap pattern
  *
- * This approach is more robust than compare-and-swap because UNIQUE constraints
- * are enforced at the database level, not dependent on read-your-writes consistency.
- * Even with D1's eventual consistency across regions, only one INSERT will succeed.
+ * Both claims must succeed. This provides:
+ * - UNIQUE constraint: Robust against D1 eventual consistency across regions
+ * - CAS claim: Backward compatibility with old code versions during deployment
+ *
+ * During deployments, both old and new code versions may run. Old versions only
+ * use CAS, new versions use both. By requiring both to succeed, we ensure only
+ * one worker (regardless of version) can execute the swarm.
  */
 
 import type { Env } from '../types/env';
@@ -19,8 +23,8 @@ import {
   getSwarms,
   getSwarmVersionModels,
   claimScheduledRun,
+  claimSwarmExecution,
   createSwarmRun,
-  updateSwarmLastRunAt,
   type SwarmWithDetails,
 } from './swarms';
 import { getModel } from './storage';
@@ -175,7 +179,7 @@ export async function runScheduledSwarms(
     }
 
     // IDEMPOTENCY CHECK: Skip if swarm already ran in the current minute
-    // This is a fast path to avoid unnecessary INSERT attempts
+    // This is a fast path to avoid unnecessary claim attempts
     if (alreadyRanInCurrentMinute(swarm.last_run_at, scheduledTime)) {
       console.log(
         `Skipping swarm ${swarm.id}: already ran at ${swarm.last_run_at} (scheduled for ${scheduledTime.toISOString()})`
@@ -183,19 +187,31 @@ export async function runScheduledSwarms(
       continue;
     }
 
-    // CLAIM VIA INSERT: Use UNIQUE constraint to ensure only one worker wins
-    // This is robust even with D1's eventual consistency across regions
-    const claimed = await claimScheduledRun(env.DB, swarm.id, scheduledTime);
-    if (!claimed) {
-      // Another worker already claimed this swarm for this scheduled time
+    // DUAL CLAIM MECHANISM: Use both approaches for backward compatibility
+    // 1. UNIQUE constraint claim (robust against D1 eventual consistency)
+    // 2. Compare-and-swap claim (backward compat with old code versions)
+    // Both must succeed to proceed - this ensures coordination between
+    // different code versions that might be running during deployments
+
+    // Try INSERT-based claim first (UNIQUE constraint)
+    const claimedViaInsert = await claimScheduledRun(env.DB, swarm.id, scheduledTime);
+    if (!claimedViaInsert) {
       console.log(
         `Skipping swarm ${swarm.id}: lost race to another worker (UNIQUE constraint)`
       );
       continue;
     }
 
-    // Update last_run_at now that we've claimed the run
-    await updateSwarmLastRunAt(env.DB, swarm.id, scheduledTime);
+    // Also try compare-and-swap claim to update last_run_at
+    // This blocks old code versions that only check last_run_at
+    const claimedViaCAS = await claimSwarmExecution(env.DB, swarm.id, scheduledTime);
+    if (!claimedViaCAS) {
+      // INSERT succeeded but CAS failed - another (old) worker already claimed
+      console.log(
+        `Skipping swarm ${swarm.id}: INSERT succeeded but CAS failed (old code version won)`
+      );
+      continue;
+    }
 
     // Run this swarm
     try {
