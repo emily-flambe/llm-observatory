@@ -11,7 +11,8 @@ from dagster import ConfigurableResource
 class ObservatoryApiResource(ConfigurableResource):
     """Resource for interacting with the LLM Observatory API."""
 
-    api_url: str = "https://observatory.emilycogsdill.com"
+    # Use workers.dev domain to bypass Cloudflare bot detection on custom domain
+    api_url: str = "https://llm-observatory.emily-cogsdill.workers.dev"
     cf_access_client_id: str
     cf_access_client_secret: str
 
