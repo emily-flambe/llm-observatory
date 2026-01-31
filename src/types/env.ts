@@ -1,11 +1,8 @@
-import type { SwarmSchedulerDONamespace } from '../services/scheduler-do';
-
 export interface Env {
   // Bindings
   DB: D1Database;
   ASSETS: Fetcher;
   AI: Ai;
-  SWARM_SCHEDULER: SwarmSchedulerDONamespace;
 
   // LLM Provider Secrets
   OPENAI_API_KEY: string;
