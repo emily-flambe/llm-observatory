@@ -33,6 +33,12 @@ binding = "DB"
 database_name = "llm-observatory-db"
 database_id = "43f364e4-fd30-4ddf-b068-de171232eddf"
 
+# DO class kept for Cloudflare compatibility (scheduling moved to Dagster)
+# The class does nothing - it just returns 410 Gone
+[[migrations]]
+tag = "v1"
+new_classes = ["SwarmSchedulerDO"]
+
 [dev]
 port = 8787
 
