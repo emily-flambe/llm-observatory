@@ -2,6 +2,9 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { Env } from './types/env';
 import { api } from './routes/api';
+// Kept for Cloudflare DO compatibility - does nothing (scheduling moved to Dagster)
+import { SwarmSchedulerDO } from './services/scheduler-do';
+export { SwarmSchedulerDO };
 
 const app = new Hono<{ Bindings: Env }>();
 
