@@ -81,3 +81,9 @@ npx wrangler d1 execute llm-observatory-db --remote --command "..."
 ## Visual Verification
 
 Use Playwright MCP to verify UI changes before committing.
+
+## Knowledge Graph (Agent-MCP)
+
+After significant changes (new features, architecture decisions, schema changes), save context to Agent-MCP using `update_project_context`. Use the key prefix `llm-observatory/` (e.g., `llm-observatory/architecture`).
+
+Update existing entries when information changes. Create new keys for new topics. This ensures any agent in any session can retrieve project context via `ask_project_rag`.
